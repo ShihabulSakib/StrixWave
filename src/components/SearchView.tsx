@@ -129,7 +129,7 @@ export const SearchView: React.FC = () => {
                 {filteredTracks.map((track, index) => (
                   <div
                     key={track.id}
-                    onClick={() => handleTrackClick(track)}
+                    onClick={() => handleTrackClick(track, index)}
                     className={`group grid grid-cols-[auto_1fr_1fr_auto] gap-4 px-4 py-2 rounded-md hover:bg-surface-hover transition-colors cursor-pointer ${
                       currentTrack?.id === track.id ? 'bg-surface-hover' : ''
                     }`}

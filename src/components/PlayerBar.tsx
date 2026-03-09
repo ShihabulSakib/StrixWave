@@ -152,7 +152,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
                     <span>Output Devices</span>
                     <div className="flex items-center gap-2">
                       <button 
-                        onClick={(e) => { e.stopPropagation(); (usePlayer() as any).enumerateDevices?.(); }}
+                        onClick={(e) => { e.stopPropagation(); enumerateDevices?.(); }}
                         className="hover:text-text-primary p-1"
                       >
                         <RefreshCw size={14} />
@@ -341,7 +341,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
               <div className="px-3 py-2 text-xs font-semibold text-text-secondary uppercase tracking-wider border-b border-divider flex justify-between items-center">
                 <span>Output Devices</span>
                 <button 
-                  onClick={(e) => { e.stopPropagation(); (usePlayer() as any).enumerateDevices?.(); }}
+                  onClick={(e) => { e.stopPropagation(); enumerateDevices?.(); }}
                   className="hover:text-text-primary p-1"
                 >
                   <RefreshCw size={14} />
