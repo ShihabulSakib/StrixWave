@@ -13,10 +13,11 @@ import {
   VolumeX,
   ListMusic,
   MonitorSpeaker,
-  Maximize2,
   ChevronUp,
   Loader2,
-  Check
+  Check,
+  X,
+  RefreshCw
 } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 import TrackCover from './TrackCover';
@@ -47,7 +48,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
     skipPrev,
     setShuffle,
     setRepeat,
-    setOutputDevice
+    setOutputDevice,
+    enumerateDevices // Assumed to be available via context if we add it, or we can use it from engine if exposed
   } = usePlayer();
 
   const [isLiked, setIsLiked] = useState(false);
@@ -95,6 +97,15 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
+  const handleToggleDeviceMenu = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!showDeviceMenu) {
+      // Refresh devices when opening
+      enumerateDevices?.();
+    }
+    setShowDeviceMenu(!showDeviceMenu);
+  }, [showDeviceMenu, enumerateDevices]);
+
   // Mobile Mini Player
   if (isMobile) {
     return (
@@ -127,6 +138,62 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
             )}
           </div>
           <div className="flex items-center gap-2">
+            {/* Output Device Toggle (Mobile) */}
+            <div className="relative">
+              <button
+                onClick={handleToggleDeviceMenu}
+                className={`p-2 transition-colors ${showDeviceMenu ? 'text-accent' : 'text-text-secondary'}`}
+              >
+                <MonitorSpeaker size={20} />
+              </button>
+              {showDeviceMenu && (
+                <div className="absolute bottom-full right-0 mb-2 w-64 bg-surface-hover rounded-lg shadow-xl border border-divider py-2 z-50 overflow-hidden">
+                  <div className="px-3 py-2 text-xs font-semibold text-text-secondary uppercase tracking-wider border-b border-divider flex justify-between items-center">
+                    <span>Output Devices</span>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); (usePlayer() as any).enumerateDevices?.(); }}
+                        className="hover:text-text-primary p-1"
+                      >
+                        <RefreshCw size={14} />
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); setShowDeviceMenu(false); }} className="hover:text-text-primary p-1">
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="max-h-60 overflow-y-auto">
+                    {outputDevices.length > 0 ? (
+                      outputDevices.map((device) => (
+                        <button
+                          key={device.deviceId}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOutputDevice(device.deviceId);
+                            setShowDeviceMenu(false);
+                          }}
+                          className={`flex items-center gap-3 w-full px-3 py-2.5 text-sm transition-colors ${
+                            selectedDevice === device.deviceId
+                              ? 'text-accent bg-accent/10'
+                              : 'text-text-primary hover:bg-surface'
+                          }`}
+                        >
+                          <MonitorSpeaker size={14} />
+                          <span className="truncate flex-1 text-left">{device.label}</span>
+                          {selectedDevice === device.deviceId && <Check size={14} className="text-accent" />}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-3 py-4 text-center text-sm text-text-secondary">
+                        <MonitorSpeaker size={24} className="mx-auto mb-2 opacity-50" />
+                        <p>No external devices found</p>
+                        <p className="text-xs mt-1">Showing system default</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -142,7 +209,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
                 <Play size={24} />
               )}
             </button>
-            <ChevronUp size={20} className="text-text-secondary" />
           </div>
         </div>
       </>
@@ -264,39 +330,51 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
         {/* Audio Output Device Selector */}
         <div className="relative">
           <button
-            onClick={() => setShowDeviceMenu(!showDeviceMenu)}
+            onClick={handleToggleDeviceMenu}
             className={`transition-colors ${showDeviceMenu ? 'text-accent' : 'text-text-secondary hover:text-text-primary'}`}
           >
             <MonitorSpeaker size={18} />
           </button>
 
           {showDeviceMenu && (
-            <div className="absolute bottom-full right-0 mb-2 w-56 bg-surface-hover rounded-lg shadow-xl border border-divider py-2 z-50">
-              <div className="px-3 py-2 text-xs font-semibold text-text-secondary uppercase tracking-wider border-b border-divider">
-                Select Output
+            <div className="absolute bottom-full right-0 mb-2 w-64 bg-surface-hover rounded-lg shadow-xl border border-divider py-2 z-50 overflow-hidden">
+              <div className="px-3 py-2 text-xs font-semibold text-text-secondary uppercase tracking-wider border-b border-divider flex justify-between items-center">
+                <span>Output Devices</span>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); (usePlayer() as any).enumerateDevices?.(); }}
+                  className="hover:text-text-primary p-1"
+                >
+                  <RefreshCw size={14} />
+                </button>
               </div>
-              {outputDevices.length > 0 ? (
-                outputDevices.map((device) => (
-                  <button
-                    key={device.deviceId}
-                    onClick={() => {
-                      setOutputDevice(device.deviceId);
-                      setShowDeviceMenu(false);
-                    }}
-                    className={`flex items-center gap-3 w-full px-3 py-2.5 text-sm transition-colors ${
-                      selectedDevice === device.deviceId
-                        ? 'text-accent bg-accent/10'
-                        : 'text-text-primary hover:bg-surface'
-                    }`}
-                  >
-                    <MonitorSpeaker size={14} />
-                    <span className="truncate flex-1 text-left">{device.label}</span>
-                    {selectedDevice === device.deviceId && <Check size={14} className="text-accent" />}
-                  </button>
-                ))
-              ) : (
-                <div className="px-3 py-2 text-sm text-text-secondary">Default output</div>
-              )}
+              <div className="max-h-60 overflow-y-auto">
+                {outputDevices.length > 0 ? (
+                  outputDevices.map((device) => (
+                    <button
+                      key={device.deviceId}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOutputDevice(device.deviceId);
+                        setShowDeviceMenu(false);
+                      }}
+                      className={`flex items-center gap-3 w-full px-3 py-2.5 text-sm transition-colors ${
+                        selectedDevice === device.deviceId
+                          ? 'text-accent bg-accent/10'
+                          : 'text-text-primary hover:bg-surface'
+                      }`}
+                    >
+                      <MonitorSpeaker size={14} />
+                      <span className="truncate flex-1 text-left">{device.label}</span>
+                      {selectedDevice === device.deviceId && <Check size={14} className="text-accent" />}
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-3 py-4 text-center text-sm text-text-secondary">
+                    <MonitorSpeaker size={20} className="mx-auto mb-2 opacity-50" />
+                    <p>No external devices</p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -326,12 +404,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
             />
           </div>
         </div>
-        <button 
-          onClick={togglePlayerExpansion}
-          className="text-text-secondary hover:text-text-primary transition-colors"
-        >
-          <Maximize2 size={16} />
-        </button>
       </div>
     </div>
   );

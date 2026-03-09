@@ -1,6 +1,7 @@
 import React from 'react';
 import { usePlayer, type Track } from '../context/PlayerContext';
 import { X, Play, Loader2, Music2 } from 'lucide-react';
+import TrackCover from './TrackCover';
 
 export const Queue: React.FC = () => {
   const {
@@ -50,7 +51,12 @@ export const Queue: React.FC = () => {
                   className="flex items-center gap-3 p-2 rounded-md hover:bg-surface-hover group cursor-pointer"
                   onClick={() => handleTrackClick(idx)}
                 >
-                  <img src={track.coverUrl} alt={track.title} className="w-10 h-10 rounded object-cover flex-shrink-0" />
+                  <TrackCover
+                    coverUrl={track.coverUrl}
+                    coverBlob={track.coverBlob}
+                    alt={track.title}
+                    className="w-10 h-10 rounded object-cover flex-shrink-0"
+                  />
                   <div className="min-w-0 flex-1">
                     <p className="text-text-primary text-sm font-medium truncate group-hover:text-accent">
                       {track.title}
@@ -71,7 +77,12 @@ export const Queue: React.FC = () => {
             </h3>
             <div className="flex items-center gap-3 p-2 rounded-md bg-accent/10 border border-accent/20">
               <div className="relative w-10 h-10 flex-shrink-0">
-                <img src={currentTrack.coverUrl} alt={currentTrack.title} className="w-10 h-10 rounded object-cover" />
+                <TrackCover
+                  coverUrl={currentTrack.coverUrl}
+                  coverBlob={currentTrack.coverBlob}
+                  alt={currentTrack.title}
+                  className="w-10 h-10 rounded object-cover"
+                />
                 {isBuffering && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded">
                     <Loader2 size={16} className="animate-spin text-accent" />
@@ -107,12 +118,17 @@ export const Queue: React.FC = () => {
                     key={`${track.id}-${actualIndex}`}
                     className="flex items-center gap-3 p-2 rounded-md hover:bg-surface-hover group"
                   >
-                    <img
-                      src={track.coverUrl}
-                      alt={track.title}
-                      className="w-10 h-10 rounded object-cover flex-shrink-0 cursor-pointer"
+                    <div
+                      className="w-10 h-10 flex-shrink-0 cursor-pointer"
                       onClick={() => handleTrackClick(actualIndex)}
-                    />
+                    >
+                      <TrackCover
+                        coverUrl={track.coverUrl}
+                        coverBlob={track.coverBlob}
+                        alt={track.title}
+                        className="w-full h-full rounded object-cover"
+                      />
+                    </div>
                     <div
                       className="min-w-0 flex-1 cursor-pointer"
                       onClick={() => handleTrackClick(actualIndex)}

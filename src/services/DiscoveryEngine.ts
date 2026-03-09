@@ -83,11 +83,13 @@ class DiscoveryEngine {
         
         const batchResults = await Promise.all(
           batch.map(async (entry) => {
-            const ext = this.getExtension(entry.name);
-            
-            // Default fallback metadata
-            let { artist, album } = this.extractMetadataFromPath(entry.path_lower, rootPath);
+            // Default fallback metadata from path/filename
+            const pathMeta = this.extractMetadataFromPath(entry.path_lower, rootPath);
+            let artist = pathMeta.artist;
+            let album = pathMeta.album;
             let title = this.cleanTitle(entry.name);
+            let duration = '0:00';
+            let durationSeconds = 0;
             const coverUrl = DEFAULT_COVERS[coverIndex++ % DEFAULT_COVERS.length];
             let coverBlob: Blob | undefined;
 
@@ -100,16 +102,22 @@ class DiscoveryEngine {
               const metadata = await mm.parseBuffer(uint8Array, entry.name);
               console.log(`[DiscoveryEngine] Parsed ${entry.name}:`, metadata.common.title || 'No Title');
               
+              // Prefer metadata-based values if they exist
               if (metadata.common.title) title = metadata.common.title;
               if (metadata.common.artist) artist = metadata.common.artist;
               if (metadata.common.album) album = metadata.common.album;
+              
+              if (metadata.format.duration) {
+                durationSeconds = Math.round(metadata.format.duration);
+                const mins = Math.floor(durationSeconds / 60);
+                const secs = durationSeconds % 60;
+                duration = `${mins}:${secs.toString().padStart(2, '0')}`;
+              }
               
               if (metadata.common.picture && metadata.common.picture.length > 0) {
                 const picture = metadata.common.picture[0];
                 coverBlob = new Blob([picture.data], { type: picture.format });
                 console.log(`[DiscoveryEngine] Found cover art for ${entry.name} (${picture.format}, ${picture.data.length} bytes)`);
-              } else {
-                console.warn(`[DiscoveryEngine] No cover art found in metadata for ${entry.name}`);
               }
             } catch (metaErr) {
                console.error(`[DiscoveryEngine] Metadata extraction failed for ${entry.name}:`, metaErr);
@@ -121,8 +129,8 @@ class DiscoveryEngine {
               artist,
               album,
               dropboxPath: entry.path_lower,
-              duration: '0:00',
-              durationSeconds: 0,
+              duration,
+              durationSeconds,
               coverUrl,
               coverBlob,
               addedDate: new Date().toLocaleDateString(),

@@ -51,6 +51,7 @@ interface PlayerContextType {
   // Audio output
   outputDevices: OutputDevice[];
   selectedDevice: string;
+  enumerateDevices: () => Promise<void>;
 
   // Actions
   togglePlay: () => void;
@@ -193,9 +194,38 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setQueueIndex(nextIdx);
     const track = queue[nextIdx];
     setCurrentTrack(track);
+
+    // Update engine with the next-next track for prefetching
     if (track?.dropboxPath) {
-      const upcomingNext = queue[nextIdx + 1];
-      engine.playTrack(track.dropboxPath, upcomingNext?.dropboxPath);
+      // We need the track after this one for prefetching
+      let upcomingNext: Track | null = null;
+      if (shuffle) {
+        const currentShuffleIdx = shuffleOrder.current.indexOf(nextIdx);
+        const nextShuffleIdx = currentShuffleIdx + 1;
+        if (nextShuffleIdx < shuffleOrder.current.length) {
+          upcomingNext = queue[shuffleOrder.current[nextShuffleIdx]];
+        } else if (repeat === 'all') {
+          upcomingNext = queue[shuffleOrder.current[0]];
+        }
+      } else {
+        const upcomingIdx = nextIdx + 1;
+        if (upcomingIdx < queue.length) {
+          upcomingNext = queue[upcomingIdx];
+        } else if (repeat === 'all') {
+          upcomingNext = queue[0];
+        }
+      }
+      
+      // If we got here via gapless handoff, the engine already started playing 'track'.
+      // We just need to tell it about the NEXT track.
+      if (engine.isPlaying) {
+        if (upcomingNext?.dropboxPath) {
+           engine.updateNextTrack(upcomingNext.dropboxPath);
+        }
+      } else {
+        // If it wasn't gapless (e.g. manually skipped), we play it normally.
+        engine.playTrack(track.dropboxPath, upcomingNext?.dropboxPath);
+      }
     }
   }, [queue, queueIndex, shuffle, repeat, engine, generateShuffleOrder, getNextTrack]);
 
@@ -206,8 +236,9 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   useEffect(() => {
     if (nextTrack?.dropboxPath) {
       engine.prefetchNextTrack(nextTrack.dropboxPath);
+      engine.updateNextTrack(nextTrack.dropboxPath);
     }
-  }, [nextTrack?.id]);
+  }, [nextTrack?.id, engine]);
 
   // -------------------------------------------------------------------
   // Actions
@@ -397,6 +428,7 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
         outputDevices: engine.outputDevices,
         selectedDevice: engine.selectedDevice,
+        enumerateDevices: engine.enumerateDevices,
 
         togglePlay,
         playTrack,

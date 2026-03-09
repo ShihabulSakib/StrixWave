@@ -16,9 +16,13 @@ import {
   X,
   GripVertical,
   Loader2,
-  Music2
+  Music2,
+  MonitorSpeaker,
+  Check,
+  RefreshCw
 } from 'lucide-react';
 import { usePlayer, type Track } from '../context/PlayerContext';
+import TrackCover from './TrackCover';
 
 export const MobilePlayerDrawer: React.FC = () => {
   const {
@@ -33,6 +37,8 @@ export const MobilePlayerDrawer: React.FC = () => {
     queueIndex,
     shuffle,
     repeat,
+    outputDevices,
+    selectedDevice,
     togglePlay,
     togglePlayerExpansion,
     setVolume,
@@ -44,13 +50,24 @@ export const MobilePlayerDrawer: React.FC = () => {
     removeFromQueue,
     playTrack,
     setQueue,
+    setOutputDevice,
+    enumerateDevices
   } = usePlayer();
 
   const [showQueue, setShowQueue] = useState(false);
+  const [showDeviceMenu, setShowDeviceMenu] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
 
   if (!currentTrack) return null;
   if (!isPlayerExpanded) return null;
+
+  const handleToggleDeviceMenu = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!showDeviceMenu) {
+      enumerateDevices?.();
+    }
+    setShowDeviceMenu(!showDeviceMenu);
+  };
 
   const formatTime = (seconds: number) => {
     if (!seconds || !isFinite(seconds)) return '0:00';
@@ -122,8 +139,9 @@ export const MobilePlayerDrawer: React.FC = () => {
                 Now Playing
               </h3>
               <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-accent/10 border border-accent/20">
-                <img
-                  src={currentTrack.coverUrl}
+                <TrackCover
+                  coverUrl={currentTrack.coverUrl}
+                  coverBlob={currentTrack.coverBlob}
                   alt={currentTrack.title}
                   className="w-12 h-12 rounded object-cover"
                 />
@@ -164,12 +182,17 @@ export const MobilePlayerDrawer: React.FC = () => {
                       className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-surface-hover transition-colors group"
                     >
                       <GripVertical size={16} className="text-text-secondary/40 flex-shrink-0" />
-                      <img
-                        src={track.coverUrl}
-                        alt={track.title}
-                        className="w-10 h-10 rounded object-cover flex-shrink-0 cursor-pointer"
+                      <div
+                        className="w-10 h-10 flex-shrink-0 cursor-pointer"
                         onClick={() => handleQueueTrackClick(track, actualIndex)}
-                      />
+                      >
+                        <TrackCover
+                          coverUrl={track.coverUrl}
+                          coverBlob={track.coverBlob}
+                          alt={track.title}
+                          className="w-full h-full rounded object-cover"
+                        />
+                      </div>
                       <div
                         className="flex-1 min-w-0 cursor-pointer"
                         onClick={() => handleQueueTrackClick(track, actualIndex)}
@@ -196,8 +219,9 @@ export const MobilePlayerDrawer: React.FC = () => {
             {/* Album Art - Large */}
             <div className="flex-1 flex items-center justify-center px-8">
               <div className="relative w-full max-w-sm">
-                <img
-                  src={currentTrack.coverUrl}
+                <TrackCover
+                  coverUrl={currentTrack.coverUrl}
+                  coverBlob={currentTrack.coverBlob}
                   alt={currentTrack.title}
                   className="w-full aspect-square rounded-lg shadow-2xl object-cover"
                 />
@@ -286,7 +310,61 @@ export const MobilePlayerDrawer: React.FC = () => {
             </div>
 
             <div className="flex items-center justify-between px-6 pb-8">
-              <div className="w-6" /> {/* Spacer */}
+              {/* Output Device Menu (Drawer) */}
+              <div className="relative">
+                <button
+                  onClick={handleToggleDeviceMenu}
+                  className={`p-2 transition-colors ${showDeviceMenu ? 'text-accent' : 'text-text-secondary'}`}
+                >
+                  <MonitorSpeaker size={28} />
+                </button>
+                {showDeviceMenu && (
+                  <div className="absolute bottom-full left-0 mb-2 w-64 bg-surface-hover rounded-lg shadow-xl border border-divider py-2 z-50 overflow-hidden">
+                    <div className="px-3 py-2 text-xs font-semibold text-text-secondary uppercase tracking-wider border-b border-divider flex justify-between items-center">
+                      <span>Output Devices</span>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); enumerateDevices?.(); }}
+                          className="hover:text-text-primary p-1"
+                        >
+                          <RefreshCw size={14} />
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); setShowDeviceMenu(false); }} className="hover:text-text-primary p-1">
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto">
+                      {outputDevices.length > 0 ? (
+                        outputDevices.map((device) => (
+                          <button
+                            key={device.deviceId}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOutputDevice(device.deviceId);
+                              setShowDeviceMenu(false);
+                            }}
+                            className={`flex items-center gap-3 w-full px-3 py-2.5 text-sm transition-colors ${
+                              selectedDevice === device.deviceId
+                                ? 'text-accent bg-accent/10'
+                                : 'text-text-primary hover:bg-surface'
+                            }`}
+                          >
+                            <MonitorSpeaker size={14} />
+                            <span className="truncate flex-1 text-left">{device.label}</span>
+                            {selectedDevice === device.deviceId && <Check size={14} className="text-accent" />}
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-3 py-4 text-center text-sm text-text-secondary">
+                          <MonitorSpeaker size={24} className="mx-auto mb-2 opacity-50" />
+                          <p>No external devices found</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
               <div className="flex items-center gap-3 flex-1 max-w-xs mx-4">
                 <button
                   onClick={() => setVolume(volume === 0 ? 70 : 0)}

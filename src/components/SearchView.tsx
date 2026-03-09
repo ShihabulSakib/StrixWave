@@ -1,20 +1,61 @@
-import React, { useState, useMemo } from 'react';
-import { Search as SearchIcon, Play, Clock } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Search as SearchIcon, Play, Clock, Loader2 } from 'lucide-react';
 import TopNav from './TopNav';
-import { categories, filterTracks, Track } from '../data/mockData';
-import { usePlayer } from '../context/PlayerContext';
+import TrackCover from './TrackCover';
+import { categories } from '../data/mockData';
+import { usePlayer, type Track } from '../context/PlayerContext';
+import { getAllTracks } from '../services/db';
 
 export const SearchView: React.FC = () => {
-  const { searchQuery, setSearchQuery, playTrack, currentTrack, isPlaying, togglePlay } = usePlayer();
+  const { searchQuery, setSearchQuery, playTrack, currentTrack, isPlaying, setQueue, isBuffering } = usePlayer();
   const [showResults, setShowResults] = useState(false);
+  const [libraryTracks, setLibraryTracks] = useState<Track[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Load tracks from IndexedDB on mount
+  useEffect(() => {
+    const loadLibrary = async () => {
+      setIsLoading(true);
+      try {
+        const stored = await getAllTracks();
+        if (stored.length > 0) {
+          const mapped: Track[] = stored.map((t) => ({
+            id: t.id,
+            title: t.title,
+            artist: t.artist,
+            album: t.album,
+            duration: t.duration,
+            durationSeconds: t.durationSeconds,
+            addedDate: t.addedDate,
+            coverUrl: t.coverUrl,
+            coverBlob: t.coverBlob,
+            dropboxPath: t.dropboxPath,
+          }));
+          setLibraryTracks(mapped);
+        }
+      } catch (err) {
+        console.error('[SearchView] Failed to load library:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadLibrary();
+  }, []);
 
   // Filter tracks based on search query
   const filteredTracks = useMemo(() => {
-    return filterTracks(searchQuery);
-  }, [searchQuery]);
+    if (!searchQuery.trim()) return [];
+    const query = searchQuery.toLowerCase();
+    return libraryTracks.filter(
+      (track) =>
+        track.title.toLowerCase().includes(query) ||
+        track.artist.toLowerCase().includes(query) ||
+        track.album.toLowerCase().includes(query)
+    );
+  }, [searchQuery, libraryTracks]);
 
-  const handleTrackClick = (track: Track) => {
-    playTrack(track);
+  const handleTrackClick = (track: Track, index: number) => {
+    setQueue(filteredTracks, index);
     setShowResults(true);
   };
 
@@ -111,8 +152,9 @@ export const SearchView: React.FC = () => {
 
                     {/* Title & Artist */}
                     <div className="flex items-center gap-3 min-w-0">
-                      <img
-                        src={track.coverUrl}
+                      <TrackCover
+                        coverUrl={track.coverUrl}
+                        coverBlob={track.coverBlob}
                         alt={track.title}
                         className="w-10 h-10 rounded object-cover"
                       />

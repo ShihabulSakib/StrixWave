@@ -96,8 +96,14 @@ export function useAudioEngine() {
 
     return () => {
       // Cleanup
-      playerA.current?.pause();
-      playerB.current?.pause();
+      if (playerA.current) {
+        playerA.current.pause();
+        playerA.current.src = '';
+      }
+      if (playerB.current) {
+        playerB.current.pause();
+        playerB.current.src = '';
+      }
       playerA.current = null;
       playerB.current = null;
       revokeAllBlobUrls();
@@ -127,7 +133,7 @@ export function useAudioEngine() {
         .filter((d) => d.kind === 'audiooutput')
         .map((d) => ({
           deviceId: d.deviceId,
-          label: d.label || `Speaker ${d.deviceId.slice(0, 8)}`,
+          label: d.label || (d.deviceId === 'default' ? 'System Default' : `Speaker ${d.deviceId.slice(0, 8)}`),
         }));
       setOutputDevices(audioOutputs);
     } catch {
@@ -228,7 +234,15 @@ export function useAudioEngine() {
         const dropbox = DropboxService.getInstance();
         const link = await dropbox.getTemporaryLink(dropboxPath);
         
-        // Use direct streaming from link
+        // Prevent unnecessary reload if source is same
+        if (player.src === link && !player.error) {
+           if (autoplay && player.paused) {
+             await player.play();
+             setIsPlaying(true);
+           }
+           return;
+        }
+
         player.src = link;
         player.load();
 
@@ -267,7 +281,15 @@ export function useAudioEngine() {
 
   const prefetchNextTrack = useCallback(
     async (nextDropboxPath: string) => {
+      if (!nextDropboxPath) return;
       if (prefetchedPath.current === nextDropboxPath) return; // Already pre-fetched
+      
+      const standby = getStandbyPlayer();
+      if (!standby) return;
+
+      // Don't prefetch if standby is somehow playing
+      if (!standby.paused) return;
+
       prefetchedPath.current = nextDropboxPath;
 
       try {
@@ -275,11 +297,9 @@ export function useAudioEngine() {
         const link = await dropbox.getTemporaryLink(nextDropboxPath);
 
         // Load into standby player (no autoplay)
-        const standby = getStandbyPlayer();
-        if (standby) {
-          standby.src = link;
-          standby.load();
-        }
+        standby.autoplay = false;
+        standby.src = link;
+        standby.load();
 
         console.log(`[AudioEngine] Pre-fetched: ${nextDropboxPath}`);
       } catch (err) {
@@ -296,17 +316,19 @@ export function useAudioEngine() {
 
   const wirePlayerEvents = useCallback(
     (player: HTMLAudioElement, nextTrackPath?: string) => {
+      let currentNextPath = nextTrackPath;
+
       // Time update → report progress + trigger pre-fetch sentinel
       const onTimeUpdate = () => {
         setCurrentTime(player.currentTime);
 
         // Pre-fetch sentinel: <30s remaining
         if (
-          nextTrackPath &&
+          currentNextPath &&
           player.duration &&
           player.duration - player.currentTime < PREFETCH_THRESHOLD_SECONDS
         ) {
-          prefetchNextTrack(nextTrackPath);
+          prefetchNextTrack(currentNextPath);
         }
       };
 
@@ -317,18 +339,30 @@ export function useAudioEngine() {
       const onEnded = () => {
         // Gapless handoff
         const standby = getStandbyPlayer();
+        
+        // Ensure active player is stopped
+        player.pause();
+
         if (standby && standby.src) {
+          // SWAP ROLES IMMEDIATELY before notifying context
+          activePlayer.current = activePlayer.current === 'A' ? 'B' : 'A';
+          
           standby.play().then(() => {
-            // Swap roles
-            activePlayer.current = activePlayer.current === 'A' ? 'B' : 'A';
-            wirePlayerEvents(standby);
             setIsPlaying(true);
             prefetchedPath.current = null;
+          }).catch(err => {
+            console.error('[AudioEngine] Gapless play failed:', err);
           });
+          
+          // Wire events for the NEW active player
+          wirePlayerEvents(standby); 
         }
 
         // Notify PlayerContext to advance queue
-        onTrackEndCallback.current?.();
+        // This is now safe because roles are swapped and events are wired
+        if (onTrackEndCallback.current) {
+          onTrackEndCallback.current();
+        }
       };
 
       const onWaiting = () => setIsBuffering(true);
@@ -336,7 +370,17 @@ export function useAudioEngine() {
       const onPlay = () => setIsPlaying(true);
       const onPause = () => setIsPlaying(false);
 
-      // Remove old listeners
+      // Remove old listeners from BOTH players to be safe
+      if (playerA.current) {
+        playerA.current.ontimeupdate = null;
+        playerA.current.onended = null;
+      }
+      if (playerB.current) {
+        playerB.current.ontimeupdate = null;
+        playerB.current.onended = null;
+      }
+
+      // Set listeners for THIS player
       player.ontimeupdate = onTimeUpdate;
       player.ondurationchange = onDurationChange;
       player.onended = onEnded;
@@ -344,9 +388,15 @@ export function useAudioEngine() {
       player.oncanplay = onCanPlay;
       player.onplay = onPlay;
       player.onpause = onPause;
+
+      return (newNextPath: string) => {
+        currentNextPath = newNextPath;
+      };
     },
     [getStandbyPlayer, prefetchNextTrack]
   );
+
+  const nextPathUpdater = useRef<((path: string) => void) | null>(null);
 
   // -------------------------------------------------------------------
   // Public API
@@ -361,17 +411,23 @@ export function useAudioEngine() {
       const active = getActivePlayer();
       if (!active) return;
 
-      // Check if link is still fresh (for resume scenarios)
+      // Check if link is still fresh
       const dropbox = DropboxService.getInstance();
       if (!dropbox.isLinkFresh(dropboxPath)) {
         dropbox.invalidateLink(dropboxPath);
       }
 
       await loadTrack(active, dropboxPath, true);
-      wirePlayerEvents(active, nextDropboxPath);
+      nextPathUpdater.current = wirePlayerEvents(active, nextDropboxPath);
     },
     [getActivePlayer, loadTrack, wirePlayerEvents]
   );
+
+  const updateNextTrack = useCallback((nextDropboxPath: string) => {
+    if (nextPathUpdater.current) {
+      nextPathUpdater.current(nextDropboxPath);
+    }
+  }, []);
 
   const play = useCallback(async () => {
     const active = getActivePlayer();
@@ -461,6 +517,7 @@ export function useAudioEngine() {
 
     // Playback
     playTrack,
+    updateNextTrack,
     play,
     pause,
     seek,

@@ -55,6 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           durationSeconds: t.durationSeconds,
           addedDate: t.addedDate,
           coverUrl: t.coverUrl,
+          coverBlob: t.coverBlob,
           dropboxPath: t.dropboxPath,
         }));
         setQueue(contextTracks, 0);

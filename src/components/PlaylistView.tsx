@@ -10,6 +10,7 @@ import {
   Loader2
 } from 'lucide-react';
 import TopNav from './TopNav';
+import TrackCover from './TrackCover';
 import { tracks as mockTracks, playlists } from '../data/mockData';
 import { usePlayer, type Track } from '../context/PlayerContext';
 import { getAllTracks } from '../services/db';
@@ -44,6 +45,7 @@ export const PlaylistView: React.FC = () => {
             durationSeconds: t.durationSeconds,
             addedDate: t.addedDate,
             coverUrl: t.coverUrl,
+            coverBlob: t.coverBlob,
             dropboxPath: t.dropboxPath,
           }));
           setLibraryTracks(mapped);
@@ -186,8 +188,9 @@ export const PlaylistView: React.FC = () => {
 
                   {/* Title & Artist */}
                   <div className="flex items-center gap-3 min-w-0 flex-1 md:flex-none">
-                    <img
-                      src={track.coverUrl}
+                    <TrackCover
+                      coverUrl={track.coverUrl}
+                      coverBlob={track.coverBlob}
                       alt={track.title}
                       className="w-12 h-12 md:w-10 md:h-10 rounded object-cover"
                     />
