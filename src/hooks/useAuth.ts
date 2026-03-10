@@ -54,17 +54,17 @@ export function useAuth(): UseAuthReturn {
 
     init();
     return () => { cancelled = true; };
-  }, []);
+  }, [auth]);
 
   const login = useCallback(async () => {
     await auth.login();
-  }, []);
+  }, [auth]);
 
   const logout = useCallback(() => {
     auth.logout();
     setIsAuthenticated(false);
     setAccessToken(null);
-  }, []);
+  }, [auth]);
 
   return { isAuthenticated, isLoading, login, logout, accessToken };
 }

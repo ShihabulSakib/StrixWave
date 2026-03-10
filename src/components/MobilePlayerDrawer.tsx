@@ -9,6 +9,7 @@ import {
   Repeat1,
   Heart,
   ChevronDown,
+  ChevronLeft,
   ListMusic,
   X,
   GripVertical,
@@ -20,6 +21,7 @@ import TrackCover from './TrackCover';
 import DeviceSelector from './shared/DeviceSelector';
 import VolumeSlider from './shared/VolumeSlider';
 import { formatTime, getNextRepeatMode, getSeekFraction, getTouchSeekFraction } from '../lib/audio-utils';
+import { useOverlayHistory } from '../hooks/useHistoryHook';
 
 export const MobilePlayerDrawer: React.FC = () => {
   const {
@@ -49,12 +51,18 @@ export const MobilePlayerDrawer: React.FC = () => {
     setQueue,
     setOutputDevice,
     enumerateDevices,
+    isTrackLiked,
+    toggleLike,
   } = usePlayer();
 
   const [showQueue, setShowQueue] = useState(false);
-  const [isLiked, setIsLiked] = useState(false);
+
+  useOverlayHistory(isPlayerExpanded && !showQueue, togglePlayerExpansion);
+  useOverlayHistory(isPlayerExpanded && showQueue, () => setShowQueue(false));
 
   if (!currentTrack) return null;
+  
+  const isLiked = isTrackLiked(currentTrack.id);
   if (!isPlayerExpanded) return null;
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -94,10 +102,10 @@ export const MobilePlayerDrawer: React.FC = () => {
         {/* Header */}
         <div className="flex items-center justify-between px-4 pt-4 pb-2">
           <button
-            onClick={togglePlayerExpansion}
+            onClick={() => showQueue ? setShowQueue(false) : togglePlayerExpansion()}
             className="p-2 text-text-secondary hover:text-text-primary transition-colors"
           >
-            <ChevronDown size={28} />
+            {showQueue ? <ChevronLeft size={28} /> : <ChevronDown size={28} />}
           </button>
           <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
             {showQueue ? 'Queue' : 'Now Playing'}
@@ -217,7 +225,7 @@ export const MobilePlayerDrawer: React.FC = () => {
                 <p className="text-text-secondary text-lg truncate">{currentTrack.artist}</p>
               </div>
               <button
-                onClick={() => setIsLiked(!isLiked)}
+                onClick={() => toggleLike(currentTrack.id, currentTrack.title)}
                 className={`p-2 transition-colors ${isLiked ? 'text-accent' : 'text-text-secondary hover:text-accent'}`}
               >
                 <Heart size={24} fill={isLiked ? 'currentColor' : 'none'} />

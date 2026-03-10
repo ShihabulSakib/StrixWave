@@ -51,45 +51,50 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
   const randomMix = [...libraryTracks].slice(0, 5);
 
   // Determine greeting based on time of day
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) return 'Good Morning';
+    if (hour >= 12 && hour < 18) return 'Good Afternoon';
+    if (hour >= 18 && hour < 22) return 'Good Evening';
+    return 'Good Night';
+  };
+
+  const greeting = getGreeting();
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto custom-scrollbar">
       <TopNav />
 
-      <div className="px-6 pb-8">
+      <div className="px-6 pb-24 md:pb-8">
         {/* Hero Section */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-text-primary mb-6">{greeting}</h1>
 
           {/* Recently Played Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {recentlyAdded.length > 0 ? recentlyAdded.slice(0, 6).map((item, idx) => (
               <div
                 key={item.id}
                 onClick={() => {
                   setQueue(recentlyAdded, idx);
                 }}
-                className="group bg-surface/50 hover:bg-surface-hover rounded-md overflow-hidden flex items-center gap-3 transition-all duration-300 cursor-pointer"
+                className="group bg-surface/40 hover:bg-surface-hover/60 rounded-lg overflow-hidden flex items-center gap-4 transition-all duration-300 cursor-pointer border border-white/5 backdrop-blur-sm"
               >
-                <TrackCover
-                  coverUrl={item.coverUrl}
-                  coverBlob={item.coverBlob}
-                  alt={item.title}
-                  className="w-16 h-16 object-cover rounded-l-md"
-                />
-                <span className="text-text-primary font-medium text-sm pr-3 group-hover:text-accent transition-colors truncate">
-                  {item.title}
-                </span>
-                <div 
-                  className="w-10 h-10 rounded-full bg-accent flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 mr-3 shadow-lg flex-shrink-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setQueue(recentlyAdded, idx);
-                  }}
-                >
-                  <Play size={18} className="fill-primary text-primary ml-0.5" />
+                <div className="relative w-16 h-16 flex-shrink-0">
+                  <TrackCover
+                    coverUrl={item.coverUrl}
+                    coverBlob={item.coverBlob}
+                    alt={item.title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="flex-1 min-w-0 pr-3">
+                  <p className="text-text-primary font-bold text-sm truncate group-hover:text-accent transition-colors">
+                    {item.title}
+                  </p>
+                  <p className="text-text-secondary text-[10px] truncate uppercase tracking-wider font-semibold opacity-60">
+                    {item.artist}
+                  </p>
                 </div>
               </div>
             )) : (
@@ -131,6 +136,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
                   coverUrl={item.coverUrl || ''}
                   coverBlob={item.coverBlob}
                   showDescription={false}
+                  hidePlayButton={true}
                   onClick={() => setQueue(randomMix, idx)}
                   onPlay={(e) => {
                     e.stopPropagation();

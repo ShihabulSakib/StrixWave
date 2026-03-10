@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
+import { useNotification } from '../components/NotificationProvider';
 import useAudioEngine from '../hooks/useAudioEngine';
 import type { OutputDevice } from '../hooks/useAudioEngine';
 
@@ -48,6 +49,11 @@ interface PlayerContextType {
   isPlayerExpanded: boolean;
   isQueueOpen: boolean;
 
+  // Liked state
+  likedTrackIds: string[];
+  toggleLike: (trackId: string, trackTitle?: string) => void;
+  isTrackLiked: (trackId: string) => boolean;
+
   // Audio output
   outputDevices: OutputDevice[];
   selectedDevice: string;
@@ -82,6 +88,7 @@ const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
 
 export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const engine = useAudioEngine();
+  const { success, info } = useNotification();
 
   // Queue state
   const [queue, setQueueState] = useState<Track[]>([]);
@@ -96,6 +103,40 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [searchQuery, setSearchQuery] = useState('');
   const [isPlayerExpanded, setIsPlayerExpanded] = useState(false);
   const [isQueueOpen, setIsQueueOpen] = useState(false);
+
+  // Liked tracks state
+  const [likedTrackIds, setLikedTrackIds] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('strixwave-liked-tracks');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const isTrackLiked = useCallback((trackId: string) => {
+    return likedTrackIds.includes(trackId);
+  }, [likedTrackIds]);
+
+  const toggleLike = useCallback((trackId: string, trackTitle?: string) => {
+    setLikedTrackIds(prev => {
+      const isLiked = prev.includes(trackId);
+      let next;
+      if (isLiked) {
+        next = prev.filter(id => id !== trackId);
+        info(trackTitle ? `Removed ${trackTitle} from Liked Songs` : 'Removed from Liked Songs');
+      } else {
+        next = [...prev, trackId];
+        success(trackTitle ? `Added ${trackTitle} to Liked Songs` : 'Added to Liked Songs');
+      }
+      try {
+        localStorage.setItem('strixwave-liked-tracks', JSON.stringify(next));
+      } catch (err) {
+        console.error('Failed to save liked tracks', err);
+      }
+      return next;
+    });
+  }, [info, success]);
 
   // Shuffle order
   const shuffleOrder = useRef<number[]>([]);
@@ -140,16 +181,6 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     // Current track is always first in shuffle
     shuffleOrder.current = [currentIdx, ...indices];
   }, []);
-
-  // -------------------------------------------------------------------
-  // Wire engine's onTrackEnd to advance queue
-  // -------------------------------------------------------------------
-
-  useEffect(() => {
-    engine.onTrackEnd(() => {
-      advanceQueue();
-    });
-  }, [queue, queueIndex, shuffle, repeat]);
 
   const advanceQueue = useCallback(() => {
     if (queue.length === 0) return;
@@ -230,6 +261,16 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }, [queue, queueIndex, shuffle, repeat, engine, generateShuffleOrder, getNextTrack]);
 
   // -------------------------------------------------------------------
+  // Wire engine's onTrackEnd to advance queue
+  // -------------------------------------------------------------------
+
+  useEffect(() => {
+    engine.onTrackEnd(() => {
+      advanceQueue();
+    });
+  }, [queue, queueIndex, shuffle, repeat, advanceQueue, engine]);
+
+  // -------------------------------------------------------------------
   // Trigger pre-fetch when nextTrack changes
   // -------------------------------------------------------------------
 
@@ -238,7 +279,7 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       engine.prefetchNextTrack(nextTrack.dropboxPath);
       engine.updateNextTrack(nextTrack.dropboxPath);
     }
-  }, [nextTrack?.id, engine]);
+  }, [nextTrack?.id, nextTrack?.dropboxPath, engine]);
 
   // -------------------------------------------------------------------
   // Actions
@@ -425,6 +466,10 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         searchQuery,
         isPlayerExpanded,
         isQueueOpen,
+
+        likedTrackIds,
+        toggleLike,
+        isTrackLiked,
 
         outputDevices: engine.outputDevices,
         selectedDevice: engine.selectedDevice,

@@ -11,6 +11,7 @@ import { Cloud, RefreshCw, Check, Loader2, X, Music2 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import DiscoveryEngine from '../services/DiscoveryEngine';
 import { usePlayer } from '../context/PlayerContext';
+import { useOverlayHistory } from '../hooks/useHistoryHook';
 
 interface ConnectionManagerProps {
   /** Whether the modal overlay is open */
@@ -21,6 +22,9 @@ interface ConnectionManagerProps {
 
 export const ConnectionManager: React.FC<ConnectionManagerProps> = ({ isOpen, onClose }) => {
   const { isAuthenticated, isLoading: authLoading, login, logout } = useAuth();
+  
+  useOverlayHistory(isOpen, onClose);
+
   const { setQueue } = usePlayer();
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncCount, setSyncCount] = useState<number | null>(null);

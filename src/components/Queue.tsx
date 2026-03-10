@@ -2,6 +2,7 @@ import React from 'react';
 import { usePlayer, type Track } from '../context/PlayerContext';
 import { X, Play, Loader2, Music2 } from 'lucide-react';
 import TrackCover from './TrackCover';
+import { useOverlayHistory } from '../hooks/useHistoryHook';
 
 export const Queue: React.FC = () => {
   const {
@@ -15,6 +16,8 @@ export const Queue: React.FC = () => {
     setQueue,
     removeFromQueue,
   } = usePlayer();
+
+  useOverlayHistory(isQueueOpen, toggleQueue);
 
   if (!isQueueOpen) return null;
 

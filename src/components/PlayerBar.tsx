@@ -46,9 +46,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
     setRepeat,
     setOutputDevice,
     enumerateDevices,
+    isTrackLiked,
+    toggleLike,
   } = usePlayer();
 
-  const [isLiked, setIsLiked] = useState(false);
+  const isLiked = currentTrack ? isTrackLiked(currentTrack.id) : false;
   const progressBarRef = useRef<HTMLDivElement>(null);
 
   // Interactive seek
@@ -73,7 +75,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
       <>
         <div
           onClick={togglePlayerExpansion}
-          className="fixed bottom-16 left-0 right-0 bg-surface border-t border-divider px-4 py-3 flex items-center justify-between z-40 cursor-pointer hover:bg-surface-hover transition-colors"
+          className="fixed bottom-0 left-0 right-0 bg-surface/80 backdrop-blur-md border-t border-divider px-4 py-3 flex items-center justify-between z-40 cursor-pointer hover:bg-surface-hover/90 transition-colors"
         >
           <div className="flex items-center gap-3 flex-1 min-w-0">
             {currentTrack && (
@@ -164,7 +166,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
           </>
         )}
         <button
-          onClick={() => setIsLiked(!isLiked)}
+          onClick={() => currentTrack && toggleLike(currentTrack.id, currentTrack.title)}
           className={`p-1 transition-colors ${isLiked ? 'text-accent' : 'text-text-secondary hover:text-text-primary'}`}
         >
           <Heart size={18} fill={isLiked ? 'currentColor' : 'none'} />

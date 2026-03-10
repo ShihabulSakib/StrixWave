@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { PlayerProvider } from './context/PlayerContext';
+import { PlaylistProvider, usePlaylists } from './context/PlaylistContext';
 import Sidebar from './components/Sidebar';
 import PlayerBar from './components/PlayerBar';
 import MobileNav from './components/MobileNav';
@@ -7,14 +8,37 @@ import MobilePlayerDrawer from './components/MobilePlayerDrawer';
 import HomeView from './components/HomeView';
 import SearchView from './components/SearchView';
 import PlaylistView from './components/PlaylistView';
-
+import YourLibrary from './components/YourLibrary';
 import Queue from './components/Queue';
+import { useNavigationHistory } from './hooks/useHistoryHook';
 
 function AppContent() {
-// ... existing states
   const [activeTab, setActiveTab] = useState('home');
   const [isMobile, setIsMobile] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+
+  const { allPlaylists } = usePlaylists();
+
+  useNavigationHistory(
+    activeTab,
+    selectedPlaylistId,
+    (tab, playlistId) => {
+      setActiveTab(tab);
+      setSelectedPlaylistId(playlistId);
+    }
+  );
+
+  useEffect(() => {
+    // If we're viewing a playlist and it was deleted, go back to library
+    if (activeTab === 'playlist' && selectedPlaylistId) {
+      const exists = allPlaylists.some(p => p.id === selectedPlaylistId);
+      if (!exists) {
+        setActiveTab('library');
+        setSelectedPlaylistId(null);
+      }
+    }
+  }, [allPlaylists, activeTab, selectedPlaylistId]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -30,23 +54,46 @@ function AppContent() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  const handleTabChange = (tab: string) => {
+    if (tab === activeTab && tab !== 'playlist') return;
+    setActiveTab(tab);
+    setSelectedPlaylistId(null);
+  };
+
+  const handlePlaylistSelect = (id: string) => {
+    if (id === selectedPlaylistId && activeTab === 'playlist') return;
+    setSelectedPlaylistId(id);
+    setActiveTab('playlist');
+  };
+
   const renderContent = () => {
+    let content;
     switch (activeTab) {
       case 'home':
-        return <HomeView onNavigate={setActiveTab} />;
+        content = <HomeView onNavigate={handleTabChange} />;
+        break;
       case 'search':
-        return <SearchView />;
+        content = <SearchView />;
+        break;
       case 'library':
-        return <PlaylistView />;
+        content = <YourLibrary onPlaylistSelect={handlePlaylistSelect} />;
+        break;
       case 'playlist':
-        return <PlaylistView />;
+        content = <PlaylistView playlistId={selectedPlaylistId} />;
+        break;
       default:
-        return <HomeView onNavigate={setActiveTab} />;
+        content = <HomeView onNavigate={handleTabChange} />;
     }
+
+    return (
+      <div key={`${activeTab}-${selectedPlaylistId}`} className="flex-1 flex flex-col overflow-hidden animate-fade-in">
+        {content}
+      </div>
+    );
   };
 
   return (
-    <div className="h-screen w-screen bg-primary flex flex-col overflow-hidden relative">
+    <div className="h-[100dvh] w-screen bg-primary flex flex-col overflow-hidden relative">
       {/* Main Content Area */}
       <div className="flex flex-1 overflow-hidden relative">
         {/* Sidebar - Hidden on mobile */}
@@ -54,7 +101,9 @@ function AppContent() {
           <Sidebar
             isExpanded={sidebarExpanded}
             activeTab={activeTab}
-            onTabChange={setActiveTab}
+            onTabChange={handleTabChange}
+            onPlaylistSelect={handlePlaylistSelect}
+            selectedPlaylistId={selectedPlaylistId}
           />
         )}
 
@@ -67,8 +116,8 @@ function AppContent() {
       {/* Player Bar - Adjusts based on screen size */}
       <PlayerBar isMobile={isMobile} />
 
-      {/* Mobile Bottom Navigation */}
-      {isMobile && <MobileNav activeTab={activeTab} onTabChange={setActiveTab} />}
+      {/* Mobile Sidebar/Drawer */}
+      <MobileNav activeTab={activeTab} onTabChange={handleTabChange} />
 
       {/* Desktop/Tablet Queue Drawer */}
       <Queue />
@@ -79,11 +128,17 @@ function AppContent() {
   );
 }
 
+import { NotificationProvider } from './components/NotificationProvider';
+
 function App() {
   return (
-    <PlayerProvider>
-      <AppContent />
-    </PlayerProvider>
+    <NotificationProvider>
+      <PlayerProvider>
+        <PlaylistProvider>
+          <AppContent />
+        </PlaylistProvider>
+      </PlayerProvider>
+    </NotificationProvider>
   );
 }
 

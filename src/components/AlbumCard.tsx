@@ -9,6 +9,7 @@ interface AlbumCardProps {
   coverUrl: string;
   coverBlob?: Blob;
   showDescription?: boolean;
+  hidePlayButton?: boolean;
   onClick?: () => void;
   onPlay?: (e: React.MouseEvent) => void;
 }
@@ -20,6 +21,7 @@ export const AlbumCard: React.FC<AlbumCardProps> = ({
   coverUrl,
   coverBlob,
   showDescription = true,
+  hidePlayButton = false,
   onClick,
   onPlay,
 }) => {
@@ -41,21 +43,23 @@ export const AlbumCard: React.FC<AlbumCardProps> = ({
           className="w-full aspect-square object-cover rounded-md shadow-lg"
         />
         {/* Play Button Overlay */}
-        <div
-          onClick={(e) => {
-            if (onPlay) {
-              e.stopPropagation();
-              onPlay(e);
-            }
-          }}
-          className={`absolute bottom-2 right-2 w-12 h-12 rounded-full bg-accent flex items-center justify-center shadow-xl transition-all duration-300 ${
-            isHovered
-              ? 'opacity-100 translate-y-0'
-              : 'opacity-0 translate-y-4'
-          }`}
-        >
-          <Play size={24} className="fill-primary text-primary ml-1" />
-        </div>
+        {!hidePlayButton && (
+          <div
+            onClick={(e) => {
+              if (onPlay) {
+                e.stopPropagation();
+                onPlay(e);
+              }
+            }}
+            className={`absolute bottom-2 right-2 w-12 h-12 rounded-full bg-accent flex items-center justify-center shadow-xl transition-all duration-300 ${
+              isHovered
+                ? 'opacity-100 translate-y-0'
+                : 'opacity-0 translate-y-4'
+            }`}
+          >
+            <Play size={24} className="fill-primary text-primary ml-1" />
+          </div>
+        )}
       </div>
 
       {/* Title */}

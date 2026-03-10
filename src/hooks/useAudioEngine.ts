@@ -111,6 +111,38 @@ export function useAudioEngine() {
   const [selectedDevice, setSelectedDevice] = useState<string>('default');
 
   // -------------------------------------------------------------------
+  // Helpers defined before effects
+  // -------------------------------------------------------------------
+
+  const enumerateDevices = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioOutputs = devices
+        .filter((d) => d.kind === 'audiooutput')
+        .map((d) => ({
+          deviceId: d.deviceId,
+          label: d.label || (d.deviceId === 'default' ? 'System Default' : `Speaker ${d.deviceId.slice(0, 8)}`),
+        }));
+      setOutputDevices(audioOutputs);
+    } catch {
+      console.warn('[AudioEngine] Could not enumerate audio devices');
+    }
+  }, []);
+
+  const cleanupMSE = useCallback(() => {
+    if (mediaSourceRef.current) {
+      try {
+        if (mediaSourceRef.current.readyState === 'open') {
+          mediaSourceRef.current.endOfStream();
+        }
+      } catch { /* ignore */ }
+      mediaSourceRef.current = null;
+    }
+    sourceBufferRef.current = null;
+    nextTrackBufferRef.current = null;
+  }, []);
+
+  // -------------------------------------------------------------------
   // Initialize audio element
   // -------------------------------------------------------------------
 
@@ -133,26 +165,11 @@ export function useAudioEngine() {
       audioRef.current = null;
       cleanupMSE();
     };
-  }, []);
+  }, [volume, enumerateDevices, cleanupMSE]);
 
   // -------------------------------------------------------------------
   // Output device management
   // -------------------------------------------------------------------
-
-  const enumerateDevices = useCallback(async () => {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const audioOutputs = devices
-        .filter((d) => d.kind === 'audiooutput')
-        .map((d) => ({
-          deviceId: d.deviceId,
-          label: d.label || (d.deviceId === 'default' ? 'System Default' : `Speaker ${d.deviceId.slice(0, 8)}`),
-        }));
-      setOutputDevices(audioOutputs);
-    } catch {
-      console.warn('[AudioEngine] Could not enumerate audio devices');
-    }
-  }, []);
 
   const setOutputDevice = useCallback(async (deviceId: string) => {
     setSelectedDevice(deviceId);
@@ -164,23 +181,6 @@ export function useAudioEngine() {
         console.warn('[AudioEngine] setSinkId failed:', err);
       }
     }
-  }, []);
-
-  // -------------------------------------------------------------------
-  // MSE helpers
-  // -------------------------------------------------------------------
-
-  const cleanupMSE = useCallback(() => {
-    if (mediaSourceRef.current) {
-      try {
-        if (mediaSourceRef.current.readyState === 'open') {
-          mediaSourceRef.current.endOfStream();
-        }
-      } catch { /* ignore */ }
-      mediaSourceRef.current = null;
-    }
-    sourceBufferRef.current = null;
-    nextTrackBufferRef.current = null;
   }, []);
 
   /**
@@ -200,122 +200,119 @@ export function useAudioEngine() {
       const abort = new AbortController();
       abortControllerRef.current = abort;
 
-      return new Promise<void>(async (resolve, reject) => {
-        try {
-          const ms = new MediaSource();
-          mediaSourceRef.current = ms;
-          audio.src = URL.createObjectURL(ms);
-          usingMSE.current = true;
+      return new Promise<void>((resolve, reject) => {
+        const initMSE = async () => {
+          try {
+            const ms = new MediaSource();
+            mediaSourceRef.current = ms;
+            audio.src = URL.createObjectURL(ms);
+            usingMSE.current = true;
 
-          await new Promise<void>((res) => {
-            ms.addEventListener('sourceopen', () => res(), { once: true });
-          });
+            await new Promise<void>((res) => {
+              ms.addEventListener('sourceopen', () => res(), { once: true });
+            });
 
-          if (abort.signal.aborted) { reject(new Error('Aborted')); return; }
+            if (abort.signal.aborted) { reject(new Error('Aborted')); return; }
 
-          const sb = ms.addSourceBuffer(mime);
-          sourceBufferRef.current = sb;
+            const sb = ms.addSourceBuffer(mime);
+            sourceBufferRef.current = sb;
 
-          // Get a temporary streaming link
-          const dropbox = DropboxService.getInstance();
-          const link = await dropbox.getTemporaryLink(dropboxPath);
+            const dropbox = DropboxService.getInstance();
+            const link = await dropbox.getTemporaryLink(dropboxPath);
 
-          if (abort.signal.aborted) { reject(new Error('Aborted')); return; }
+            if (abort.signal.aborted) { reject(new Error('Aborted')); return; }
 
-          // Start streaming chunks
-          let offset = 0;
-          let firstChunkLoaded = false;
+            let offset = 0;
+            let firstChunkLoaded = false;
 
-          const fetchNextChunk = async () => {
-            if (abort.signal.aborted) return;
-
-            try {
-              const response = await fetch(link, {
-                headers: { Range: `bytes=${offset}-${offset + CHUNK_SIZE - 1}` },
-              });
-
+            const fetchNextChunk = async () => {
               if (abort.signal.aborted) return;
 
-              if (!response.ok && response.status !== 206) {
-                // Reached end of file or error
-                if (ms.readyState === 'open') {
-                  // Wait for buffer to finish updating before ending stream
-                  const waitForUpdate = () => new Promise<void>((res) => {
-                    if (!sb.updating) { res(); return; }
+              try {
+                const response = await fetch(link, {
+                  headers: { Range: `bytes=${offset}-${offset + CHUNK_SIZE - 1}` },
+                });
+
+                if (abort.signal.aborted) return;
+
+                if (!response.ok && response.status !== 206) {
+                  if (ms.readyState === 'open') {
+                    const waitForUpdate = () => new Promise<void>((res) => {
+                      if (!sb.updating) { res(); return; }
+                      sb.addEventListener('updateend', () => res(), { once: true });
+                    });
+                    await waitForUpdate();
+                    ms.endOfStream();
+                  }
+                  return;
+                }
+
+                const data = await response.arrayBuffer();
+                if (abort.signal.aborted) return;
+
+                const contentRange = response.headers.get('Content-Range');
+                let totalSize = Infinity;
+                if (contentRange) {
+                  const match = contentRange.match(/\/(\d+)/);
+                  if (match) totalSize = parseInt(match[1], 10);
+                }
+
+                if (sb.updating) {
+                  await new Promise<void>((res) => {
                     sb.addEventListener('updateend', () => res(), { once: true });
                   });
-                  await waitForUpdate();
-                  ms.endOfStream();
                 }
-                return;
-              }
 
-              const data = await response.arrayBuffer();
-              if (abort.signal.aborted) return;
+                if (abort.signal.aborted) return;
 
-              const contentRange = response.headers.get('Content-Range');
-              let totalSize = Infinity;
-              if (contentRange) {
-                const match = contentRange.match(/\/(\d+)/);
-                if (match) totalSize = parseInt(match[1], 10);
-              }
+                sb.appendBuffer(data);
 
-              // Wait for buffer to be ready
-              if (sb.updating) {
                 await new Promise<void>((res) => {
                   sb.addEventListener('updateend', () => res(), { once: true });
                 });
-              }
 
-              if (abort.signal.aborted) return;
-
-              sb.appendBuffer(data);
-
-              await new Promise<void>((res) => {
-                sb.addEventListener('updateend', () => res(), { once: true });
-              });
-
-              if (!firstChunkLoaded) {
-                firstChunkLoaded = true;
-                setIsBuffering(false);
-                if (autoplay) {
-                  await audio.play();
-                  setIsPlaying(true);
+                if (!firstChunkLoaded) {
+                  firstChunkLoaded = true;
+                  setIsBuffering(false);
+                  if (autoplay) {
+                    await audio.play();
+                    setIsPlaying(true);
+                  }
+                  resolve();
                 }
-                resolve();
-              }
 
-              offset += data.byteLength;
+                offset += data.byteLength;
 
-              // Check if we've received all data
-              if (offset >= totalSize) {
-                if (ms.readyState === 'open') {
-                  const waitForUpdate = () => new Promise<void>((res) => {
-                    if (!sb.updating) { res(); return; }
-                    sb.addEventListener('updateend', () => res(), { once: true });
-                  });
-                  await waitForUpdate();
-                  ms.endOfStream();
+                if (offset >= totalSize) {
+                  if (ms.readyState === 'open') {
+                    const waitForUpdate = () => new Promise<void>((res) => {
+                      if (!sb.updating) { res(); return; }
+                      sb.addEventListener('updateend', () => res(), { once: true });
+                    });
+                    await waitForUpdate();
+                    ms.endOfStream();
+                  }
+                  return;
                 }
-                return;
-              }
 
-              // Continue fetching
-              fetchNextChunk();
-            } catch (err) {
-              if (abort.signal.aborted) return;
-              console.error('[AudioEngine] Chunk fetch error:', err);
-              if (!firstChunkLoaded) {
-                reject(err);
+                fetchNextChunk();
+              } catch (err) {
+                if (abort.signal.aborted) return;
+                console.error('[AudioEngine] Chunk fetch error:', err);
+                if (!firstChunkLoaded) {
+                  reject(err);
+                }
               }
-            }
-          };
+            };
 
-          fetchNextChunk();
-        } catch (err) {
-          setIsBuffering(false);
-          reject(err);
-        }
+            fetchNextChunk();
+          } catch (err) {
+            setIsBuffering(false);
+            reject(err);
+          }
+        };
+
+        initMSE();
       });
     },
     [cleanupMSE]
