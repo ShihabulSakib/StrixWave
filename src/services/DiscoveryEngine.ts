@@ -2,18 +2,24 @@
  * DiscoveryEngine — Recursive Dropbox Folder Scanner
  *
  * Scans a Dropbox folder (default: /Music) recursively,
- * filters for audio files, extracts metadata from folder structure,
+ * filters for audio files, extracts metadata using a Web Worker,
  * and stores results in IndexedDB.
  *
- * Folder convention: /Music/Artist/Album/track.mp3
- * If structure is flat, artist/album default to "Unknown".
+ * Optimizations:
+ *   - 512KB chunks instead of 1MB (halves bandwidth)
+ *   - Web Worker for off-main-thread metadata parsing (keeps UI at 60fps)
+ *   - Folder convention: /Music/Artist/Album/track.mp3
  */
 
 import DropboxService from './DropboxService';
 import { upsertTracks, clearTracks, type StoredTrack } from './db';
+import type { MetadataRequest, MetadataResponse } from './metadata.worker';
 
 // Supported audio extensions
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.wma', '.opus']);
+
+// Metadata chunk size: 512KB (sufficient for ID3v2/Vorbis + embedded art)
+const METADATA_CHUNK_SIZE = 512 * 1024;
 
 // Default cover images (cycle through Unsplash music images)
 const DEFAULT_COVERS = [
@@ -29,6 +35,7 @@ export type ScanProgressCallback = (found: number, scanning: boolean) => void;
 
 class DiscoveryEngine {
   private static instance: DiscoveryEngine;
+  private worker: Worker | null = null;
 
   private constructor() {}
 
@@ -37,6 +44,41 @@ class DiscoveryEngine {
       DiscoveryEngine.instance = new DiscoveryEngine();
     }
     return DiscoveryEngine.instance;
+  }
+
+  /**
+   * Create or reuse the metadata parsing Web Worker.
+   */
+  private getWorker(): Worker {
+    if (!this.worker) {
+      this.worker = new Worker(
+        new URL('./metadata.worker.ts', import.meta.url),
+        { type: 'module' }
+      );
+    }
+    return this.worker;
+  }
+
+  /**
+   * Parse metadata using the Web Worker. Returns a promise that resolves
+   * when the worker posts back results for the given ID.
+   */
+  private parseWithWorker(id: string, arrayBuffer: ArrayBuffer, filename: string): Promise<MetadataResponse> {
+    return new Promise((resolve) => {
+      const worker = this.getWorker();
+      
+      const handler = (event: MessageEvent<MetadataResponse>) => {
+        if (event.data.id === id) {
+          worker.removeEventListener('message', handler);
+          resolve(event.data);
+        }
+      };
+      
+      worker.addEventListener('message', handler);
+      
+      const request: MetadataRequest = { id, arrayBuffer, filename };
+      worker.postMessage(request, [arrayBuffer]); // Transfer ownership for perf
+    });
   }
 
   /**
@@ -76,7 +118,6 @@ class DiscoveryEngine {
 
       // 2. Process in parallel with concurrency limit (avoid 429s)
       const CONCURRENCY = 5;
-      const mm = await import('music-metadata-browser');
 
       for (let i = 0; i < audioEntries.length; i += CONCURRENCY) {
         const batch = audioEntries.slice(i, i + CONCURRENCY);
@@ -94,30 +135,34 @@ class DiscoveryEngine {
             let coverBlob: Blob | undefined;
 
             try {
-              // Increase chunk size to 1MB for better reliability with high-res art/FLAC
-              const chunk = await dropbox.downloadChunk(entry.path_lower, 0, 1024 * 1024);
+              // Download 512KB chunk (halved from 1MB — sufficient for ID3/Vorbis + cover art)
+              const chunk = await dropbox.downloadChunk(entry.path_lower, 0, METADATA_CHUNK_SIZE);
               const arrayBuffer = await chunk.arrayBuffer();
-              const uint8Array = new Uint8Array(arrayBuffer);
               
-              const metadata = await mm.parseBuffer(uint8Array, entry.name);
-              console.log(`[DiscoveryEngine] Parsed ${entry.name}:`, metadata.common.title || 'No Title');
-              
-              // Prefer metadata-based values if they exist
-              if (metadata.common.title) title = metadata.common.title;
-              if (metadata.common.artist) artist = metadata.common.artist;
-              if (metadata.common.album) album = metadata.common.album;
-              
-              if (metadata.format.duration) {
-                durationSeconds = Math.round(metadata.format.duration);
-                const mins = Math.floor(durationSeconds / 60);
-                const secs = durationSeconds % 60;
-                duration = `${mins}:${secs.toString().padStart(2, '0')}`;
-              }
-              
-              if (metadata.common.picture && metadata.common.picture.length > 0) {
-                const picture = metadata.common.picture[0];
-                coverBlob = new Blob([picture.data], { type: picture.format });
-                console.log(`[DiscoveryEngine] Found cover art for ${entry.name} (${picture.format}, ${picture.data.length} bytes)`);
+              // Parse metadata off-main-thread via Web Worker
+              const workerResult = await this.parseWithWorker(
+                this.generateId(entry.path_lower),
+                arrayBuffer,
+                entry.name
+              );
+
+              if (workerResult.error) {
+                console.warn(`[DiscoveryEngine] Worker parse failed for ${entry.name}:`, workerResult.error);
+              } else {
+                // Prefer metadata-based values if they exist
+                if (workerResult.title) title = workerResult.title;
+                if (workerResult.artist) artist = workerResult.artist;
+                if (workerResult.album) album = workerResult.album;
+                
+                if (workerResult.durationSeconds) {
+                  durationSeconds = workerResult.durationSeconds;
+                }
+                if (workerResult.duration) {
+                  duration = workerResult.duration;
+                }
+                if (workerResult.coverBlob) {
+                  coverBlob = workerResult.coverBlob;
+                }
               }
             } catch (metaErr) {
                console.error(`[DiscoveryEngine] Metadata extraction failed for ${entry.name}:`, metaErr);
@@ -155,11 +200,26 @@ class DiscoveryEngine {
       }
 
       onProgress?.(tracks.length, false);
+
+      // Terminate worker after scan completes
+      this.terminateWorker();
+
       return tracks;
     } catch (err) {
       console.error('[DiscoveryEngine] Scan failed:', err);
       onProgress?.(tracks.length, false);
+      this.terminateWorker();
       throw err;
+    }
+  }
+
+  /**
+   * Clean up the worker when done scanning.
+   */
+  private terminateWorker(): void {
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
     }
   }
 

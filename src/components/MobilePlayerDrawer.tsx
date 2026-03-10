@@ -10,19 +10,16 @@ import {
   Heart,
   ChevronDown,
   ListMusic,
-  Volume2,
-  Volume1,
-  VolumeX,
   X,
   GripVertical,
   Loader2,
   Music2,
-  MonitorSpeaker,
-  Check,
-  RefreshCw
 } from 'lucide-react';
 import { usePlayer, type Track } from '../context/PlayerContext';
 import TrackCover from './TrackCover';
+import DeviceSelector from './shared/DeviceSelector';
+import VolumeSlider from './shared/VolumeSlider';
+import { formatTime, getNextRepeatMode, getSeekFraction, getTouchSeekFraction } from '../lib/audio-utils';
 
 export const MobilePlayerDrawer: React.FC = () => {
   const {
@@ -51,51 +48,29 @@ export const MobilePlayerDrawer: React.FC = () => {
     playTrack,
     setQueue,
     setOutputDevice,
-    enumerateDevices
+    enumerateDevices,
   } = usePlayer();
 
   const [showQueue, setShowQueue] = useState(false);
-  const [showDeviceMenu, setShowDeviceMenu] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
 
   if (!currentTrack) return null;
   if (!isPlayerExpanded) return null;
 
-  const handleToggleDeviceMenu = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!showDeviceMenu) {
-      enumerateDevices?.();
-    }
-    setShowDeviceMenu(!showDeviceMenu);
-  };
-
-  const formatTime = (seconds: number) => {
-    if (!seconds || !isFinite(seconds)) return '0:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const pct = Math.max(0, Math.min(1, x / rect.width));
+    const pct = getSeekFraction(e, e.currentTarget as HTMLDivElement);
     seekTo(pct * duration);
   };
 
   const handleTouchSeek = (e: React.TouchEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.touches[0].clientX - rect.left;
-    const pct = Math.max(0, Math.min(1, x / rect.width));
+    const pct = getTouchSeekFraction(e, e.currentTarget as HTMLDivElement);
     seekTo(pct * duration);
   };
 
   const cycleRepeat = () => {
-    const modes: Array<'off' | 'all' | 'one'> = ['off', 'all', 'one'];
-    const current = modes.indexOf(repeat);
-    setRepeat(modes[(current + 1) % modes.length]);
+    setRepeat(getNextRepeatMode(repeat));
   };
 
   const handleQueueTrackClick = (track: Track, index: number) => {
@@ -311,80 +286,21 @@ export const MobilePlayerDrawer: React.FC = () => {
 
             <div className="flex items-center justify-between px-6 pb-8">
               {/* Output Device Menu (Drawer) */}
-              <div className="relative">
-                <button
-                  onClick={handleToggleDeviceMenu}
-                  className={`p-2 transition-colors ${showDeviceMenu ? 'text-accent' : 'text-text-secondary'}`}
-                >
-                  <MonitorSpeaker size={28} />
-                </button>
-                {showDeviceMenu && (
-                  <div className="absolute bottom-full left-0 mb-2 w-64 bg-surface-hover rounded-lg shadow-xl border border-divider py-2 z-50 overflow-hidden">
-                    <div className="px-3 py-2 text-xs font-semibold text-text-secondary uppercase tracking-wider border-b border-divider flex justify-between items-center">
-                      <span>Output Devices</span>
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); enumerateDevices?.(); }}
-                          className="hover:text-text-primary p-1"
-                        >
-                          <RefreshCw size={14} />
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); setShowDeviceMenu(false); }} className="hover:text-text-primary p-1">
-                          <X size={16} />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="max-h-60 overflow-y-auto">
-                      {outputDevices.length > 0 ? (
-                        outputDevices.map((device) => (
-                          <button
-                            key={device.deviceId}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setOutputDevice(device.deviceId);
-                              setShowDeviceMenu(false);
-                            }}
-                            className={`flex items-center gap-3 w-full px-3 py-2.5 text-sm transition-colors ${
-                              selectedDevice === device.deviceId
-                                ? 'text-accent bg-accent/10'
-                                : 'text-text-primary hover:bg-surface'
-                            }`}
-                          >
-                            <MonitorSpeaker size={14} />
-                            <span className="truncate flex-1 text-left">{device.label}</span>
-                            {selectedDevice === device.deviceId && <Check size={14} className="text-accent" />}
-                          </button>
-                        ))
-                      ) : (
-                        <div className="px-3 py-4 text-center text-sm text-text-secondary">
-                          <MonitorSpeaker size={24} className="mx-auto mb-2 opacity-50" />
-                          <p>No external devices found</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-3 flex-1 max-w-xs mx-4">
-                <button
-                  onClick={() => setVolume(volume === 0 ? 70 : 0)}
-                  className="text-text-secondary hover:text-text-primary transition-colors"
-                >
-                  {volume === 0 ? (
-                    <VolumeX size={20} />
-                  ) : volume < 50 ? (
-                    <Volume1 size={20} />
-                  ) : (
-                    <Volume2 size={20} />
-                  )}
-                </button>
-                <div className="flex-1 h-1 bg-surface-hover rounded-full cursor-pointer">
-                  <div
-                    className="h-full bg-text-secondary rounded-full"
-                    style={{ width: `${volume}%` }}
-                  />
-                </div>
-              </div>
+              <DeviceSelector
+                outputDevices={outputDevices}
+                selectedDevice={selectedDevice}
+                onSelect={setOutputDevice}
+                onRefresh={enumerateDevices}
+                iconSize={28}
+                showClose
+                position="bottom-left"
+              />
+              <VolumeSlider
+                volume={volume}
+                onVolumeChange={setVolume}
+                iconSize={20}
+                widthClass="flex-1 max-w-xs mx-4"
+              />
               <button
                 onClick={() => setShowQueue(true)}
                 className={`transition-colors ${showQueue ? 'text-accent' : 'text-text-secondary hover:text-text-primary'}`}

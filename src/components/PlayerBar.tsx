@@ -8,19 +8,15 @@ import {
   Repeat,
   Repeat1,
   Heart,
-  Volume2,
-  Volume1,
-  VolumeX,
   ListMusic,
-  MonitorSpeaker,
   ChevronUp,
   Loader2,
-  Check,
-  X,
-  RefreshCw
 } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 import TrackCover from './TrackCover';
+import DeviceSelector from './shared/DeviceSelector';
+import VolumeSlider from './shared/VolumeSlider';
+import { formatTime, getNextRepeatMode, getSeekFraction } from '../lib/audio-utils';
 
 interface PlayerBarProps {
   isMobile?: boolean;
@@ -49,62 +45,27 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
     setShuffle,
     setRepeat,
     setOutputDevice,
-    enumerateDevices // Assumed to be available via context if we add it, or we can use it from engine if exposed
+    enumerateDevices,
   } = usePlayer();
 
   const [isLiked, setIsLiked] = useState(false);
-  const [showDeviceMenu, setShowDeviceMenu] = useState(false);
   const progressBarRef = useRef<HTMLDivElement>(null);
-  const volumeBarRef = useRef<HTMLDivElement>(null);
-
-  const formatTime = (seconds: number) => {
-    if (!seconds || !isFinite(seconds)) return '0:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
 
   // Interactive seek
   const handleSeek = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!progressBarRef.current || !duration) return;
-      const rect = progressBarRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const pct = Math.max(0, Math.min(1, x / rect.width));
+      const pct = getSeekFraction(e, progressBarRef.current);
       seekTo(pct * duration);
     },
     [duration, seekTo]
   );
 
-  // Interactive volume
-  const handleVolumeChange = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!volumeBarRef.current) return;
-      const rect = volumeBarRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const pct = Math.max(0, Math.min(100, (x / rect.width) * 100));
-      setVolume(pct);
-    },
-    [setVolume]
-  );
-
-  // Repeat toggle cycle
   const cycleRepeat = useCallback(() => {
-    const modes: Array<'off' | 'one' | 'all'> = ['off', 'all', 'one'];
-    const current = modes.indexOf(repeat);
-    setRepeat(modes[(current + 1) % modes.length]);
+    setRepeat(getNextRepeatMode(repeat));
   }, [repeat, setRepeat]);
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
-
-  const handleToggleDeviceMenu = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!showDeviceMenu) {
-      // Refresh devices when opening
-      enumerateDevices?.();
-    }
-    setShowDeviceMenu(!showDeviceMenu);
-  }, [showDeviceMenu, enumerateDevices]);
 
   // Mobile Mini Player
   if (isMobile) {
@@ -139,61 +100,15 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
           </div>
           <div className="flex items-center gap-2">
             {/* Output Device Toggle (Mobile) */}
-            <div className="relative">
-              <button
-                onClick={handleToggleDeviceMenu}
-                className={`p-2 transition-colors ${showDeviceMenu ? 'text-accent' : 'text-text-secondary'}`}
-              >
-                <MonitorSpeaker size={20} />
-              </button>
-              {showDeviceMenu && (
-                <div className="absolute bottom-full right-0 mb-2 w-64 bg-surface-hover rounded-lg shadow-xl border border-divider py-2 z-50 overflow-hidden">
-                  <div className="px-3 py-2 text-xs font-semibold text-text-secondary uppercase tracking-wider border-b border-divider flex justify-between items-center">
-                    <span>Output Devices</span>
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); enumerateDevices?.(); }}
-                        className="hover:text-text-primary p-1"
-                      >
-                        <RefreshCw size={14} />
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); setShowDeviceMenu(false); }} className="hover:text-text-primary p-1">
-                        <X size={16} />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="max-h-60 overflow-y-auto">
-                    {outputDevices.length > 0 ? (
-                      outputDevices.map((device) => (
-                        <button
-                          key={device.deviceId}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setOutputDevice(device.deviceId);
-                            setShowDeviceMenu(false);
-                          }}
-                          className={`flex items-center gap-3 w-full px-3 py-2.5 text-sm transition-colors ${
-                            selectedDevice === device.deviceId
-                              ? 'text-accent bg-accent/10'
-                              : 'text-text-primary hover:bg-surface'
-                          }`}
-                        >
-                          <MonitorSpeaker size={14} />
-                          <span className="truncate flex-1 text-left">{device.label}</span>
-                          {selectedDevice === device.deviceId && <Check size={14} className="text-accent" />}
-                        </button>
-                      ))
-                    ) : (
-                      <div className="px-3 py-4 text-center text-sm text-text-secondary">
-                        <MonitorSpeaker size={24} className="mx-auto mb-2 opacity-50" />
-                        <p>No external devices found</p>
-                        <p className="text-xs mt-1">Showing system default</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+            <DeviceSelector
+              outputDevices={outputDevices}
+              selectedDevice={selectedDevice}
+              onSelect={setOutputDevice}
+              onRefresh={enumerateDevices}
+              iconSize={20}
+              showClose
+              position="bottom-right"
+            />
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -328,82 +243,18 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
         </button>
 
         {/* Audio Output Device Selector */}
-        <div className="relative">
-          <button
-            onClick={handleToggleDeviceMenu}
-            className={`transition-colors ${showDeviceMenu ? 'text-accent' : 'text-text-secondary hover:text-text-primary'}`}
-          >
-            <MonitorSpeaker size={18} />
-          </button>
-
-          {showDeviceMenu && (
-            <div className="absolute bottom-full right-0 mb-2 w-64 bg-surface-hover rounded-lg shadow-xl border border-divider py-2 z-50 overflow-hidden">
-              <div className="px-3 py-2 text-xs font-semibold text-text-secondary uppercase tracking-wider border-b border-divider flex justify-between items-center">
-                <span>Output Devices</span>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); enumerateDevices?.(); }}
-                  className="hover:text-text-primary p-1"
-                >
-                  <RefreshCw size={14} />
-                </button>
-              </div>
-              <div className="max-h-60 overflow-y-auto">
-                {outputDevices.length > 0 ? (
-                  outputDevices.map((device) => (
-                    <button
-                      key={device.deviceId}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setOutputDevice(device.deviceId);
-                        setShowDeviceMenu(false);
-                      }}
-                      className={`flex items-center gap-3 w-full px-3 py-2.5 text-sm transition-colors ${
-                        selectedDevice === device.deviceId
-                          ? 'text-accent bg-accent/10'
-                          : 'text-text-primary hover:bg-surface'
-                      }`}
-                    >
-                      <MonitorSpeaker size={14} />
-                      <span className="truncate flex-1 text-left">{device.label}</span>
-                      {selectedDevice === device.deviceId && <Check size={14} className="text-accent" />}
-                    </button>
-                  ))
-                ) : (
-                  <div className="px-3 py-4 text-center text-sm text-text-secondary">
-                    <MonitorSpeaker size={20} className="mx-auto mb-2 opacity-50" />
-                    <p>No external devices</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+        <DeviceSelector
+          outputDevices={outputDevices}
+          selectedDevice={selectedDevice}
+          onSelect={setOutputDevice}
+          onRefresh={enumerateDevices}
+        />
 
         {/* Volume */}
-        <div className="flex items-center gap-2 w-28 group">
-          <button
-            onClick={() => setVolume(volume === 0 ? 70 : 0)}
-            className="text-text-secondary hover:text-text-primary transition-colors"
-          >
-            {volume === 0 ? (
-              <VolumeX size={18} />
-            ) : volume < 50 ? (
-              <Volume1 size={18} />
-            ) : (
-              <Volume2 size={18} />
-            )}
-          </button>
-          <div
-            ref={volumeBarRef}
-            onClick={handleVolumeChange}
-            className="flex-1 h-1 bg-surface-hover rounded-full cursor-pointer"
-          >
-            <div
-              className="h-full bg-text-secondary rounded-full group-hover:bg-accent transition-colors"
-              style={{ width: `${volume}%` }}
-            />
-          </div>
-        </div>
+        <VolumeSlider
+          volume={volume}
+          onVolumeChange={setVolume}
+        />
       </div>
     </div>
   );

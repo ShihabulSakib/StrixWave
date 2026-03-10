@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Search, Library } from 'lucide-react';
+import { navItems } from '../lib/navItems';
 
 interface MobileNavProps {
   activeTab: string;
@@ -7,12 +7,6 @@ interface MobileNavProps {
 }
 
 export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onTabChange }) => {
-  const navItems = [
-    { id: 'home', icon: Home, label: 'Home' },
-    { id: 'search', icon: Search, label: 'Search' },
-    { id: 'library', icon: Library, label: 'Your Library' },
-  ];
-
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-surface border-t border-divider md:hidden z-50">
       <div className="flex items-center justify-around py-2">

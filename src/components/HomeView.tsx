@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Play } from 'lucide-react';
+import { Play, Cloud, Music2 } from 'lucide-react';
 import TopNav from './TopNav';
 import AlbumCard from './AlbumCard';
 import TrackCover from './TrackCover';
+import ConnectionManager from './ConnectionManager';
 import { usePlayer, type Track } from '../context/PlayerContext';
 import { getAllTracks } from '../services/db';
 
@@ -13,6 +14,7 @@ interface HomeViewProps {
 export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
   const { playTrack, setQueue } = usePlayer();
   const [libraryTracks, setLibraryTracks] = useState<Track[]>([]);
+  const [showConnectionManager, setShowConnectionManager] = useState(false);
 
   useEffect(() => {
     const loadLibrary = async () => {
@@ -28,7 +30,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
             durationSeconds: t.durationSeconds,
             addedDate: t.addedDate,
             coverUrl: t.coverUrl,
-            coverBlob: t.coverBlob, // Added
+            coverBlob: t.coverBlob,
             dropboxPath: t.dropboxPath,
           }));
           
@@ -47,6 +49,11 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
   ).slice(0, 8);
   
   const randomMix = [...libraryTracks].slice(0, 5);
+
+  // Determine greeting based on time of day
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
   return (
     <div className="flex-1 overflow-y-auto">
       <TopNav />
@@ -54,7 +61,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
       <div className="px-6 pb-8">
         {/* Hero Section */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-text-primary mb-6">Good evening</h1>
+          <h1 className="text-3xl font-bold text-text-primary mb-6">{greeting}</h1>
 
           {/* Recently Played Grid */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -86,8 +93,22 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
                 </div>
               </div>
             )) : (
-              <div className="col-span-full py-8 text-text-secondary text-sm">
-                No tracks in your library yet. Connect your Dropbox to get started.
+              /* ===== Empty State with CTA ===== */
+              <div className="col-span-full flex flex-col items-center py-12 text-center">
+                <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mb-6">
+                  <Music2 size={36} className="text-accent" />
+                </div>
+                <h3 className="text-xl font-bold text-text-primary mb-2">Welcome to Strixwave</h3>
+                <p className="text-text-secondary text-sm max-w-sm mb-6">
+                  Connect your Dropbox account to sync and stream your personal music library.
+                </p>
+                <button
+                  onClick={() => setShowConnectionManager(true)}
+                  className="flex items-center gap-3 px-8 py-4 rounded-lg bg-accent hover:bg-accent-hover text-primary font-semibold transition-all hover:scale-105 shadow-lg"
+                >
+                  <Cloud size={22} />
+                  <span>Connect & Sync Dropbox</span>
+                </button>
               </div>
             )}
           </div>
@@ -121,6 +142,12 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
           </section>
         )}
       </div>
+
+      {/* Connection Manager Modal */}
+      <ConnectionManager
+        isOpen={showConnectionManager}
+        onClose={() => setShowConnectionManager(false)}
+      />
     </div>
   );
 };

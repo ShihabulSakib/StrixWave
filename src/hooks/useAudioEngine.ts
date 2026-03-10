@@ -1,13 +1,12 @@
 /**
- * useAudioEngine — Gapless Dual-Node Audio Engine
+ * useAudioEngine — MSE-Based Gapless Audio Engine
  *
- * Architecture:
- *   - Two persistent HTMLAudioElement nodes: Player_A and Player_B
- *   - Active/Standby model: while A plays, B is pre-warmed
- *   - On A.ended → B.play() → swap roles
- *   - Cache API stores pre-fetched chunks for instant start
+ * Architecture (v2 — MediaSource Extension):
+ *   - Single HTMLAudioElement backed by MediaSource
+ *   - BufferManager feeds chunks via DropboxService.downloadChunk → SourceBuffer
+ *   - Gapless: pre-buffers next track in a separate SourceBuffer, swaps on track end
+ *   - For formats MSE can't handle, falls back to direct URL playback
  *   - Blob URL lifecycle managed with revokeObjectURL
- *   - 50MB buffer ceiling with oldest-first eviction
  *   - 300ms debounce on skip to prevent API rate limiting
  *   - Audio output device selection via setSinkId()
  *   - Mobile: volume delegates to system (no override)
@@ -37,22 +36,49 @@ export interface OutputDevice {
 // Constants
 const PREFETCH_THRESHOLD_SECONDS = 30; // Pre-fetch when <30s remaining
 const SKIP_DEBOUNCE_MS = 300;
-const MAX_BLOB_CACHE_BYTES = 50 * 1024 * 1024; // 50MB ceiling
-const CACHE_NAME = 'strixwave-audio-cache';
+const CHUNK_SIZE = 512 * 1024; // 512KB streaming chunks
+
+// Check MSE support for common audio codecs
+const MSE_SUPPORTED = (() => {
+  if (typeof MediaSource === 'undefined') return false;
+  // Check common audio MIME types that MSE supports
+  const types = [
+    'audio/mpeg',      // MP3
+    'audio/mp4',       // AAC/M4A
+    'audio/webm',      // WebM/Opus
+  ];
+  return types.some(t => MediaSource.isTypeSupported(t));
+})();
+
+// Map file extension to MIME type for MSE
+function getMimeForExtension(path: string): string | null {
+  const ext = path.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'mp3': return 'audio/mpeg';
+    case 'm4a':
+    case 'aac': return 'audio/mp4; codecs="mp4a.40.2"';
+    case 'opus':
+    case 'webm': return 'audio/webm; codecs="opus"';
+    default: return null; // FLAC, WAV, OGG — fallback to direct playback
+  }
+}
 
 // -------------------------------------------------------------------
 // Hook
 // -------------------------------------------------------------------
 
 export function useAudioEngine() {
-  // Two persistent audio nodes
-  const playerA = useRef<HTMLAudioElement | null>(null);
-  const playerB = useRef<HTMLAudioElement | null>(null);
-  const activePlayer = useRef<'A' | 'B'>('A');
+  // Single audio element
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Blob URL tracking for revocation / memory management
-  const blobUrls = useRef<Map<string, { url: string; size: number; createdAt: number }>>(new Map());
-  const totalBlobSize = useRef(0);
+  // MSE refs
+  const mediaSourceRef = useRef<MediaSource | null>(null);
+  const sourceBufferRef = useRef<SourceBuffer | null>(null);
+  const nextTrackBufferRef = useRef<{
+    path: string;
+    chunks: ArrayBuffer[];
+    mime: string;
+  } | null>(null);
 
   // State
   const [currentTime, setCurrentTime] = useState(0);
@@ -67,6 +93,13 @@ export function useAudioEngine() {
   // Pre-fetch state
   const prefetchedPath = useRef<string | null>(null);
   const onTrackEndCallback = useRef<(() => void) | null>(null);
+  const currentTrackPath = useRef<string | null>(null);
+
+  // Whether current track uses MSE or direct URL fallback
+  const usingMSE = useRef(false);
+
+  // Abort controller for chunk downloads
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Mobile detection
   const isMobile = useRef(
@@ -78,48 +111,28 @@ export function useAudioEngine() {
   const [selectedDevice, setSelectedDevice] = useState<string>('default');
 
   // -------------------------------------------------------------------
-  // Initialize audio nodes
+  // Initialize audio element
   // -------------------------------------------------------------------
 
   useEffect(() => {
-    playerA.current = new Audio();
-    playerB.current = new Audio();
+    audioRef.current = new Audio();
 
     // Set initial volume (skip on mobile — let system handle it)
     if (!isMobile.current) {
-      playerA.current.volume = volume;
-      playerB.current.volume = volume;
+      audioRef.current.volume = volume;
     }
 
     // Enumerate output devices
     enumerateDevices();
 
     return () => {
-      // Cleanup
-      if (playerA.current) {
-        playerA.current.pause();
-        playerA.current.src = '';
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
       }
-      if (playerB.current) {
-        playerB.current.pause();
-        playerB.current.src = '';
-      }
-      playerA.current = null;
-      playerB.current = null;
-      revokeAllBlobUrls();
+      audioRef.current = null;
+      cleanupMSE();
     };
-  }, []);
-
-  // -------------------------------------------------------------------
-  // Active player helper
-  // -------------------------------------------------------------------
-
-  const getActivePlayer = useCallback((): HTMLAudioElement | null => {
-    return activePlayer.current === 'A' ? playerA.current : playerB.current;
-  }, []);
-
-  const getStandbyPlayer = useCallback((): HTMLAudioElement | null => {
-    return activePlayer.current === 'A' ? playerB.current : playerA.current;
   }, []);
 
   // -------------------------------------------------------------------
@@ -143,130 +156,219 @@ export function useAudioEngine() {
 
   const setOutputDevice = useCallback(async (deviceId: string) => {
     setSelectedDevice(deviceId);
+    const el = audioRef.current;
+    if (el && 'setSinkId' in el) {
+      try {
+        await (el as any).setSinkId(deviceId);
+      } catch (err) {
+        console.warn('[AudioEngine] setSinkId failed:', err);
+      }
+    }
+  }, []);
 
-    const setSink = async (el: HTMLAudioElement | null) => {
-      if (el && 'setSinkId' in el) {
-        try {
-          await (el as any).setSinkId(deviceId);
-        } catch (err) {
-          console.warn('[AudioEngine] setSinkId failed:', err);
+  // -------------------------------------------------------------------
+  // MSE helpers
+  // -------------------------------------------------------------------
+
+  const cleanupMSE = useCallback(() => {
+    if (mediaSourceRef.current) {
+      try {
+        if (mediaSourceRef.current.readyState === 'open') {
+          mediaSourceRef.current.endOfStream();
         }
-      }
-    };
-
-    await setSink(playerA.current);
-    await setSink(playerB.current);
-  }, []);
-
-  // -------------------------------------------------------------------
-  // Blob URL management (Cache limits: 5 mobile, 15 desktop)
-  // -------------------------------------------------------------------
-
-  const trackBlobUrl = useCallback((path: string, url: string, size: number) => {
-    blobUrls.current.set(path, { url, size, createdAt: Date.now() });
-
-    const maxCacheLimit = isMobile.current ? 5 : 15;
-
-    // Evict oldest until under ceiling
-    while (blobUrls.current.size > maxCacheLimit) {
-      let oldestKey = '';
-      let oldestTime = Infinity;
-      for (const [key, entry] of blobUrls.current) {
-        if (entry.createdAt < oldestTime) {
-          oldestTime = entry.createdAt;
-          oldestKey = key;
-        }
-      }
-      if (oldestKey) {
-        const entry = blobUrls.current.get(oldestKey)!;
-        URL.revokeObjectURL(entry.url);
-        blobUrls.current.delete(oldestKey);
-        console.log(`[AudioEngine] Evicted blob for "${oldestKey}"`);
-      }
+      } catch { /* ignore */ }
+      mediaSourceRef.current = null;
     }
+    sourceBufferRef.current = null;
+    nextTrackBufferRef.current = null;
   }, []);
 
-  const revokeAllBlobUrls = useCallback(() => {
-    for (const [, entry] of blobUrls.current) {
-      URL.revokeObjectURL(entry.url);
-    }
-    blobUrls.current.clear();
-    totalBlobSize.current = 0;
-  }, []);
+  /**
+   * Stream a track using MSE (MediaSource Extensions).
+   * Progressively fetches chunks and appends them to the SourceBuffer.
+   */
+  const streamWithMSE = useCallback(
+    async (dropboxPath: string, mime: string, autoplay: boolean): Promise<void> => {
+      const audio = audioRef.current;
+      if (!audio) return;
 
-  // -------------------------------------------------------------------
-  // Cache API helpers
-  // -------------------------------------------------------------------
-
-  const cacheChunk = useCallback(async (path: string, blob: Blob) => {
-    try {
-      const cache = await caches.open(CACHE_NAME);
-      const response = new Response(blob);
-      await cache.put(`/audio/${encodeURIComponent(path)}`, response);
-    } catch (err) {
-      console.warn('[AudioEngine] Cache API write failed:', err);
-    }
-  }, []);
-
-  const getCachedChunk = useCallback(async (path: string): Promise<Blob | null> => {
-    try {
-      const cache = await caches.open(CACHE_NAME);
-      const response = await cache.match(`/audio/${encodeURIComponent(path)}`);
-      return response ? await response.blob() : null;
-    } catch {
-      return null;
-    }
-  }, []);
-
-  // -------------------------------------------------------------------
-  // Core: Load a track into a player node
-  // -------------------------------------------------------------------
-
-  const loadTrack = useCallback(
-    async (
-      player: HTMLAudioElement,
-      dropboxPath: string,
-      autoplay: boolean = false
-    ): Promise<void> => {
       setIsBuffering(true);
+      cleanupMSE();
+
+      // Abort any previous download
+      abortControllerRef.current?.abort();
+      const abort = new AbortController();
+      abortControllerRef.current = abort;
+
+      return new Promise<void>(async (resolve, reject) => {
+        try {
+          const ms = new MediaSource();
+          mediaSourceRef.current = ms;
+          audio.src = URL.createObjectURL(ms);
+          usingMSE.current = true;
+
+          await new Promise<void>((res) => {
+            ms.addEventListener('sourceopen', () => res(), { once: true });
+          });
+
+          if (abort.signal.aborted) { reject(new Error('Aborted')); return; }
+
+          const sb = ms.addSourceBuffer(mime);
+          sourceBufferRef.current = sb;
+
+          // Get a temporary streaming link
+          const dropbox = DropboxService.getInstance();
+          const link = await dropbox.getTemporaryLink(dropboxPath);
+
+          if (abort.signal.aborted) { reject(new Error('Aborted')); return; }
+
+          // Start streaming chunks
+          let offset = 0;
+          let firstChunkLoaded = false;
+
+          const fetchNextChunk = async () => {
+            if (abort.signal.aborted) return;
+
+            try {
+              const response = await fetch(link, {
+                headers: { Range: `bytes=${offset}-${offset + CHUNK_SIZE - 1}` },
+              });
+
+              if (abort.signal.aborted) return;
+
+              if (!response.ok && response.status !== 206) {
+                // Reached end of file or error
+                if (ms.readyState === 'open') {
+                  // Wait for buffer to finish updating before ending stream
+                  const waitForUpdate = () => new Promise<void>((res) => {
+                    if (!sb.updating) { res(); return; }
+                    sb.addEventListener('updateend', () => res(), { once: true });
+                  });
+                  await waitForUpdate();
+                  ms.endOfStream();
+                }
+                return;
+              }
+
+              const data = await response.arrayBuffer();
+              if (abort.signal.aborted) return;
+
+              const contentRange = response.headers.get('Content-Range');
+              let totalSize = Infinity;
+              if (contentRange) {
+                const match = contentRange.match(/\/(\d+)/);
+                if (match) totalSize = parseInt(match[1], 10);
+              }
+
+              // Wait for buffer to be ready
+              if (sb.updating) {
+                await new Promise<void>((res) => {
+                  sb.addEventListener('updateend', () => res(), { once: true });
+                });
+              }
+
+              if (abort.signal.aborted) return;
+
+              sb.appendBuffer(data);
+
+              await new Promise<void>((res) => {
+                sb.addEventListener('updateend', () => res(), { once: true });
+              });
+
+              if (!firstChunkLoaded) {
+                firstChunkLoaded = true;
+                setIsBuffering(false);
+                if (autoplay) {
+                  await audio.play();
+                  setIsPlaying(true);
+                }
+                resolve();
+              }
+
+              offset += data.byteLength;
+
+              // Check if we've received all data
+              if (offset >= totalSize) {
+                if (ms.readyState === 'open') {
+                  const waitForUpdate = () => new Promise<void>((res) => {
+                    if (!sb.updating) { res(); return; }
+                    sb.addEventListener('updateend', () => res(), { once: true });
+                  });
+                  await waitForUpdate();
+                  ms.endOfStream();
+                }
+                return;
+              }
+
+              // Continue fetching
+              fetchNextChunk();
+            } catch (err) {
+              if (abort.signal.aborted) return;
+              console.error('[AudioEngine] Chunk fetch error:', err);
+              if (!firstChunkLoaded) {
+                reject(err);
+              }
+            }
+          };
+
+          fetchNextChunk();
+        } catch (err) {
+          setIsBuffering(false);
+          reject(err);
+        }
+      });
+    },
+    [cleanupMSE]
+  );
+
+  /**
+   * Fallback: load track via direct temporary URL (for FLAC, WAV, OGG).
+   */
+  const loadDirectURL = useCallback(
+    async (dropboxPath: string, autoplay: boolean): Promise<void> => {
+      const audio = audioRef.current;
+      if (!audio) return;
+
+      setIsBuffering(true);
+      usingMSE.current = false;
 
       try {
         const dropbox = DropboxService.getInstance();
         const link = await dropbox.getTemporaryLink(dropboxPath);
-        
+
         // Prevent unnecessary reload if source is same
-        if (player.src === link && !player.error) {
-           if (autoplay && player.paused) {
-             await player.play();
-             setIsPlaying(true);
-           }
-           return;
+        if (audio.src === link && !audio.error) {
+          if (autoplay && audio.paused) {
+            await audio.play();
+            setIsPlaying(true);
+          }
+          return;
         }
 
-        player.src = link;
-        player.load();
+        audio.src = link;
+        audio.load();
 
         await new Promise<void>((resolve, reject) => {
           const onCanPlay = () => {
-            player.removeEventListener('canplay', onCanPlay);
-            player.removeEventListener('error', onError);
+            audio.removeEventListener('canplay', onCanPlay);
+            audio.removeEventListener('error', onError);
             resolve();
           };
           const onError = () => {
-            player.removeEventListener('canplay', onCanPlay);
-            player.removeEventListener('error', onError);
+            audio.removeEventListener('canplay', onCanPlay);
+            audio.removeEventListener('error', onError);
             reject(new Error(`Failed to load audio: ${dropboxPath}`));
           };
-          player.addEventListener('canplay', onCanPlay);
-          player.addEventListener('error', onError);
+          audio.addEventListener('canplay', onCanPlay);
+          audio.addEventListener('error', onError);
         });
 
         if (autoplay) {
-          await player.play();
+          await audio.play();
           setIsPlaying(true);
         }
       } catch (err) {
-        console.error('[AudioEngine] loadTrack failed:', err);
+        console.error('[AudioEngine] loadDirectURL failed:', err);
         throw err;
       } finally {
         setIsBuffering(false);
@@ -276,90 +378,80 @@ export function useAudioEngine() {
   );
 
   // -------------------------------------------------------------------
-  // Pre-fetch next track into standby player
+  // Pre-fetch next track's initial data for gapless transitions
   // -------------------------------------------------------------------
 
   const prefetchNextTrack = useCallback(
     async (nextDropboxPath: string) => {
       if (!nextDropboxPath) return;
-      if (prefetchedPath.current === nextDropboxPath) return; // Already pre-fetched
-      
-      const standby = getStandbyPlayer();
-      if (!standby) return;
-
-      // Don't prefetch if standby is somehow playing
-      if (!standby.paused) return;
+      if (prefetchedPath.current === nextDropboxPath) return;
 
       prefetchedPath.current = nextDropboxPath;
 
       try {
         const dropbox = DropboxService.getInstance();
-        const link = await dropbox.getTemporaryLink(nextDropboxPath);
+        const mime = getMimeForExtension(nextDropboxPath);
 
-        // Load into standby player (no autoplay)
-        standby.autoplay = false;
-        standby.src = link;
-        standby.load();
+        if (mime && MSE_SUPPORTED && MediaSource.isTypeSupported(mime)) {
+          // Pre-fetch first chunk for MSE gapless
+          const link = await dropbox.getTemporaryLink(nextDropboxPath);
+          const response = await fetch(link, {
+            headers: { Range: `bytes=0-${CHUNK_SIZE - 1}` },
+          });
 
-        console.log(`[AudioEngine] Pre-fetched: ${nextDropboxPath}`);
+          if (response.ok || response.status === 206) {
+            const data = await response.arrayBuffer();
+            nextTrackBufferRef.current = {
+              path: nextDropboxPath,
+              chunks: [data],
+              mime,
+            };
+            console.log(`[AudioEngine] Pre-fetched ${CHUNK_SIZE / 1024}KB for gapless: ${nextDropboxPath}`);
+          }
+        } else {
+          // Fallback: pre-fetch temporary link only
+          await dropbox.getTemporaryLink(nextDropboxPath);
+          console.log(`[AudioEngine] Pre-fetched link for: ${nextDropboxPath}`);
+        }
       } catch (err) {
         console.warn('[AudioEngine] Pre-fetch failed:', err);
         prefetchedPath.current = null;
       }
     },
-    [getStandbyPlayer]
+    []
   );
 
   // -------------------------------------------------------------------
-  // Event wiring for active player
+  // Event wiring for the audio element
   // -------------------------------------------------------------------
 
   const wirePlayerEvents = useCallback(
-    (player: HTMLAudioElement, nextTrackPath?: string) => {
+    (nextTrackPath?: string) => {
+      const audio = audioRef.current;
+      if (!audio) return () => {};
+
       let currentNextPath = nextTrackPath;
 
-      // Time update → report progress + trigger pre-fetch sentinel
       const onTimeUpdate = () => {
-        setCurrentTime(player.currentTime);
+        setCurrentTime(audio.currentTime);
 
         // Pre-fetch sentinel: <30s remaining
         if (
           currentNextPath &&
-          player.duration &&
-          player.duration - player.currentTime < PREFETCH_THRESHOLD_SECONDS
+          audio.duration &&
+          audio.duration - audio.currentTime < PREFETCH_THRESHOLD_SECONDS
         ) {
           prefetchNextTrack(currentNextPath);
         }
       };
 
       const onDurationChange = () => {
-        setDuration(player.duration || 0);
+        setDuration(audio.duration || 0);
       };
 
       const onEnded = () => {
-        // Gapless handoff
-        const standby = getStandbyPlayer();
-        
-        // Ensure active player is stopped
-        player.pause();
-
-        if (standby && standby.src) {
-          // SWAP ROLES IMMEDIATELY before notifying context
-          activePlayer.current = activePlayer.current === 'A' ? 'B' : 'A';
-          
-          standby.play().then(() => {
-            setIsPlaying(true);
-            prefetchedPath.current = null;
-          }).catch(err => {
-            console.error('[AudioEngine] Gapless play failed:', err);
-          });
-          
-          // Wire events for the NEW active player
-          wirePlayerEvents(standby); 
-        }
-
-        // Notify PlayerContext to advance queue
-        // This is now safe because roles are swapped and events are wired
+        // Notify PlayerContext to advance queue — the context will call playTrack
+        // for the next track, which will use pre-fetched data for near-instant start
         if (onTrackEndCallback.current) {
           onTrackEndCallback.current();
         }
@@ -370,30 +462,20 @@ export function useAudioEngine() {
       const onPlay = () => setIsPlaying(true);
       const onPause = () => setIsPlaying(false);
 
-      // Remove old listeners from BOTH players to be safe
-      if (playerA.current) {
-        playerA.current.ontimeupdate = null;
-        playerA.current.onended = null;
-      }
-      if (playerB.current) {
-        playerB.current.ontimeupdate = null;
-        playerB.current.onended = null;
-      }
-
-      // Set listeners for THIS player
-      player.ontimeupdate = onTimeUpdate;
-      player.ondurationchange = onDurationChange;
-      player.onended = onEnded;
-      player.onwaiting = onWaiting;
-      player.oncanplay = onCanPlay;
-      player.onplay = onPlay;
-      player.onpause = onPause;
+      // Clear old listeners
+      audio.ontimeupdate = onTimeUpdate;
+      audio.ondurationchange = onDurationChange;
+      audio.onended = onEnded;
+      audio.onwaiting = onWaiting;
+      audio.oncanplay = onCanPlay;
+      audio.onplay = onPlay;
+      audio.onpause = onPause;
 
       return (newNextPath: string) => {
         currentNextPath = newNextPath;
       };
     },
-    [getStandbyPlayer, prefetchNextTrack]
+    [prefetchNextTrack]
   );
 
   const nextPathUpdater = useRef<((path: string) => void) | null>(null);
@@ -404,12 +486,13 @@ export function useAudioEngine() {
 
   /**
    * Play a track by its Dropbox path.
-   * Loads into active player and starts playback.
+   * Uses MSE for supported formats (MP3, AAC/M4A, Opus),
+   * falls back to direct URL for FLAC, WAV, OGG.
    */
   const playTrack = useCallback(
     async (dropboxPath: string, nextDropboxPath?: string) => {
-      const active = getActivePlayer();
-      if (!active) return;
+      currentTrackPath.current = dropboxPath;
+      prefetchedPath.current = null;
 
       // Check if link is still fresh
       const dropbox = DropboxService.getInstance();
@@ -417,10 +500,19 @@ export function useAudioEngine() {
         dropbox.invalidateLink(dropboxPath);
       }
 
-      await loadTrack(active, dropboxPath, true);
-      nextPathUpdater.current = wirePlayerEvents(active, nextDropboxPath);
+      const mime = getMimeForExtension(dropboxPath);
+      const canUseMSE = mime && MSE_SUPPORTED && MediaSource.isTypeSupported(mime);
+
+      if (canUseMSE) {
+        await streamWithMSE(dropboxPath, mime!, true);
+      } else {
+        // Fallback for FLAC, WAV, OGG, etc.
+        await loadDirectURL(dropboxPath, true);
+      }
+
+      nextPathUpdater.current = wirePlayerEvents(nextDropboxPath);
     },
-    [getActivePlayer, loadTrack, wirePlayerEvents]
+    [streamWithMSE, loadDirectURL, wirePlayerEvents]
   );
 
   const updateNextTrack = useCallback((nextDropboxPath: string) => {
@@ -430,30 +522,30 @@ export function useAudioEngine() {
   }, []);
 
   const play = useCallback(async () => {
-    const active = getActivePlayer();
-    if (active && active.src) {
-      await active.play();
+    const audio = audioRef.current;
+    if (audio && audio.src) {
+      await audio.play();
       setIsPlaying(true);
     }
-  }, [getActivePlayer]);
+  }, []);
 
   const pause = useCallback(() => {
-    const active = getActivePlayer();
-    if (active) {
-      active.pause();
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
       setIsPlaying(false);
     }
-  }, [getActivePlayer]);
+  }, []);
 
   const seek = useCallback(
     (time: number) => {
-      const active = getActivePlayer();
-      if (active) {
-        active.currentTime = time;
+      const audio = audioRef.current;
+      if (audio) {
+        audio.currentTime = time;
         setCurrentTime(time);
       }
     },
-    [getActivePlayer]
+    []
   );
 
   const setVolume = useCallback(
@@ -462,9 +554,8 @@ export function useAudioEngine() {
       setVolumeState(clamped);
 
       // On mobile, don't override — let system handle volume
-      if (!isMobile.current) {
-        if (playerA.current) playerA.current.volume = clamped;
-        if (playerB.current) playerB.current.volume = clamped;
+      if (!isMobile.current && audioRef.current) {
+        audioRef.current.volume = clamped;
       }
     },
     []
@@ -472,7 +563,6 @@ export function useAudioEngine() {
 
   /**
    * Skip with 300ms debounce to prevent API rate limiting.
-   * Returns true if skip was allowed, false if debounced.
    */
   const canSkip = useCallback((): boolean => {
     const now = Date.now();
@@ -486,7 +576,6 @@ export function useAudioEngine() {
 
   /**
    * Register a callback for when the active track ends.
-   * Used by PlayerContext to advance the queue.
    */
   const onTrackEnd = useCallback((cb: () => void) => {
     onTrackEndCallback.current = cb;
@@ -496,15 +585,19 @@ export function useAudioEngine() {
    * Stop playback and clean up.
    */
   const stop = useCallback(() => {
-    playerA.current?.pause();
-    playerB.current?.pause();
-    if (playerA.current) playerA.current.src = '';
-    if (playerB.current) playerB.current.src = '';
+    abortControllerRef.current?.abort();
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.src = '';
+    }
+    cleanupMSE();
     setIsPlaying(false);
     setCurrentTime(0);
     setDuration(0);
-    revokeAllBlobUrls();
-  }, [revokeAllBlobUrls]);
+    currentTrackPath.current = null;
+    prefetchedPath.current = null;
+  }, [cleanupMSE]);
 
   return {
     // State

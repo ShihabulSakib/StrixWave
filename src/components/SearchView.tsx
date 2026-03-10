@@ -2,9 +2,24 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Search as SearchIcon, Play, Clock, Loader2 } from 'lucide-react';
 import TopNav from './TopNav';
 import TrackCover from './TrackCover';
-import { categories } from '../data/mockData';
 import { usePlayer, type Track } from '../context/PlayerContext';
 import { getAllTracks } from '../services/db';
+
+// Browse categories (inlined — no mockData dependency)
+const categories = [
+  { id: '1', name: 'Pop', color: 'from-pink-500 to-rose-500' },
+  { id: '2', name: 'Hip-Hop', color: 'from-orange-500 to-amber-600' },
+  { id: '3', name: 'Electronic', color: 'from-cyan-500 to-blue-600' },
+  { id: '4', name: 'Rock', color: 'from-red-600 to-orange-500' },
+  { id: '5', name: 'Jazz', color: 'from-amber-400 to-yellow-600' },
+  { id: '6', name: 'Classical', color: 'from-violet-500 to-purple-600' },
+  { id: '7', name: 'Indie', color: 'from-teal-400 to-cyan-500' },
+  { id: '8', name: 'R&B', color: 'from-fuchsia-500 to-pink-600' },
+  { id: '9', name: 'Metal', color: 'from-slate-700 to-slate-900' },
+  { id: '10', name: 'Country', color: 'from-amber-600 to-yellow-500' },
+  { id: '11', name: 'Soul', color: 'from-purple-500 to-violet-600' },
+  { id: '12', name: 'Reggae', color: 'from-green-500 to-emerald-600' },
+];
 
 export const SearchView: React.FC = () => {
   const { searchQuery, setSearchQuery, playTrack, currentTrack, isPlaying, setQueue, isBuffering } = usePlayer();
