@@ -30,7 +30,9 @@ export const TopNav: React.FC<TopNavProps> = ({ title }) => {
             className="md:hidden w-8 h-8 flex items-center justify-center text-text-secondary hover:text-text-primary transition-all"
             onClick={() => window.dispatchEvent(new CustomEvent('toggle-mobile-nav'))}
           >
-            <Menu size={24} />
+            <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
+              <User size={18} />
+            </div>
           </button>
           <button className="hidden md:flex w-8 h-8 rounded-full bg-surface/80 items-center justify-center text-text-secondary hover:text-text-primary hover:scale-105 transition-all">
             <ChevronLeft size={20} />
@@ -47,7 +49,13 @@ export const TopNav: React.FC<TopNavProps> = ({ title }) => {
           </button>
           {/* Sync button — visible on all viewports including mobile */}
           <button
-            onClick={() => setShowConnectionManager(true)}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              // Small delay ensures no conflict with other active history listeners
+              setTimeout(() => setShowConnectionManager(true), 50);
+            }}
             className="w-8 h-8 rounded-full bg-surface flex items-center justify-center text-text-secondary hover:text-accent hover:scale-105 transition-all"
             title="Dropbox Sync"
           >

@@ -36,7 +36,7 @@ export interface OutputDevice {
 // Constants
 const PREFETCH_THRESHOLD_SECONDS = 30; // Pre-fetch when <30s remaining
 const SKIP_DEBOUNCE_MS = 300;
-const CHUNK_SIZE = 512 * 1024; // 512KB streaming chunks
+const CHUNK_SIZE = 256 * 1024; // 256KB streaming chunks
 
 // Check MSE support for common audio codecs
 const MSE_SUPPORTED = (() => {
@@ -165,7 +165,7 @@ export function useAudioEngine() {
       audioRef.current = null;
       cleanupMSE();
     };
-  }, [volume, enumerateDevices, cleanupMSE]);
+  }, []); // Only run once on mount
 
   // -------------------------------------------------------------------
   // Output device management
@@ -425,7 +425,7 @@ export function useAudioEngine() {
   const wirePlayerEvents = useCallback(
     (nextTrackPath?: string) => {
       const audio = audioRef.current;
-      if (!audio) return () => {};
+      if (!audio) return () => { };
 
       let currentNextPath = nextTrackPath;
 
@@ -443,7 +443,15 @@ export function useAudioEngine() {
       };
 
       const onDurationChange = () => {
-        setDuration(audio.duration || 0);
+        if (audio.duration && isFinite(audio.duration)) {
+          setDuration(audio.duration);
+        }
+      };
+
+      const onLoadedMetadata = () => {
+        if (audio.duration && isFinite(audio.duration)) {
+          setDuration(audio.duration);
+        }
       };
 
       const onEnded = () => {
@@ -462,6 +470,7 @@ export function useAudioEngine() {
       // Clear old listeners
       audio.ontimeupdate = onTimeUpdate;
       audio.ondurationchange = onDurationChange;
+      audio.onloadedmetadata = onLoadedMetadata;
       audio.onended = onEnded;
       audio.onwaiting = onWaiting;
       audio.oncanplay = onCanPlay;
@@ -491,6 +500,10 @@ export function useAudioEngine() {
       currentTrackPath.current = dropboxPath;
       prefetchedPath.current = null;
 
+      // Reset state for new track
+      setCurrentTime(0);
+      setDuration(0);
+
       // Check if link is still fresh
       const dropbox = DropboxService.getInstance();
       if (!dropbox.isLinkFresh(dropboxPath)) {
@@ -500,14 +513,15 @@ export function useAudioEngine() {
       const mime = getMimeForExtension(dropboxPath);
       const canUseMSE = mime && MSE_SUPPORTED && MediaSource.isTypeSupported(mime);
 
+      // Wire events first so we don't miss the start
+      nextPathUpdater.current = wirePlayerEvents(nextDropboxPath);
+
       if (canUseMSE) {
         await streamWithMSE(dropboxPath, mime!, true);
       } else {
         // Fallback for FLAC, WAV, OGG, etc.
         await loadDirectURL(dropboxPath, true);
       }
-
-      nextPathUpdater.current = wirePlayerEvents(nextDropboxPath);
     },
     [streamWithMSE, loadDirectURL, wirePlayerEvents]
   );

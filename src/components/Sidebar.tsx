@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Heart, Music2, Loader2, ListMusic } from 'lucide-react';
+import { Plus, Heart, Music2, ListMusic, Loader2 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { usePlaylists } from '../context/PlaylistContext';
 import { navItems } from '../lib/navItems';
@@ -21,7 +21,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   selectedPlaylistId
 }) => {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
-  const { playlists, allPlaylists, createPlaylist, toggleFavoritePlaylist } = usePlaylists();
+  const { playlists, allPlaylists, createPlaylist } = usePlaylists();
   const [showConnectionManager, setShowConnectionManager] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');

@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { PlayerProvider } from './context/PlayerContext';
 import { PlaylistProvider, usePlaylists } from './context/PlaylistContext';
 import Sidebar from './components/Sidebar';
 import PlayerBar from './components/PlayerBar';
 import MobileNav from './components/MobileNav';
+import MobileBottomNav from './components/MobileBottomNav';
 import MobilePlayerDrawer from './components/MobilePlayerDrawer';
 import HomeView from './components/HomeView';
 import SearchView from './components/SearchView';
@@ -12,7 +13,7 @@ import YourLibrary from './components/YourLibrary';
 import Queue from './components/Queue';
 import { useNavigationHistory } from './hooks/useHistoryHook';
 
-function AppContent() {
+const AppContent = memo(() => {
   const [activeTab, setActiveTab] = useState('home');
   const [isMobile, setIsMobile] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
@@ -116,6 +117,9 @@ function AppContent() {
       {/* Player Bar - Adjusts based on screen size */}
       <PlayerBar isMobile={isMobile} />
 
+      {/* Mobile Bottom Navigation - Added for Spotify-like behavior */}
+      {isMobile && <MobileBottomNav activeTab={activeTab} onTabChange={handleTabChange} />}
+
       {/* Mobile Sidebar/Drawer */}
       <MobileNav activeTab={activeTab} onTabChange={handleTabChange} />
 
@@ -126,7 +130,9 @@ function AppContent() {
       <MobilePlayerDrawer />
     </div>
   );
-}
+});
+
+AppContent.displayName = 'AppContent';
 
 import { NotificationProvider } from './components/NotificationProvider';
 

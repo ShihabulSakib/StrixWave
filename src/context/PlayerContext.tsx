@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode, useMemo } from 'react';
 import { useNotification } from '../components/NotificationProvider';
 import useAudioEngine from '../hooks/useAudioEngine';
 import type { OutputDevice } from '../hooks/useAudioEngine';
@@ -32,10 +32,7 @@ interface PlayerContextType {
   isPlaying: boolean;
   isBuffering: boolean;
   currentTrack: Track | null;
-  currentTime: number;
-  duration: number;
   volume: number;
-  progress: number; // 0-100 percentage for backward compat
 
   // Queue
   queue: Track[];
@@ -67,7 +64,6 @@ interface PlayerContextType {
   togglePlayerExpansion: () => void;
   toggleQueue: () => void;
   setVolume: (volume: number) => void;
-  setProgress: (progress: number) => void;
   seekTo: (seconds: number) => void;
   skipNext: () => void;
   skipPrev: () => void;
@@ -80,7 +76,14 @@ interface PlayerContextType {
   setOutputDevice: (deviceId: string) => void;
 }
 
+interface PlayerProgressContextType {
+  currentTime: number;
+  duration: number;
+  progress: number;
+}
+
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
+const PlayerProgressContext = createContext<PlayerProgressContextType | undefined>(undefined);
 
 // -------------------------------------------------------------------
 // Provider
@@ -247,16 +250,9 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         }
       }
       
-      // If we got here via gapless handoff, the engine already started playing 'track'.
-      // We just need to tell it about the NEXT track.
-      if (engine.isPlaying) {
-        if (upcomingNext?.dropboxPath) {
-           engine.updateNextTrack(upcomingNext.dropboxPath);
-        }
-      } else {
-        // If it wasn't gapless (e.g. manually skipped), we play it normally.
-        engine.playTrack(track.dropboxPath, upcomingNext?.dropboxPath);
-      }
+      // Always play the new track normaly. 
+      // The engine handles the internal state if it's already playing.
+      engine.playTrack(track.dropboxPath, upcomingNext?.dropboxPath);
     }
   }, [queue, queueIndex, shuffle, repeat, engine, generateShuffleOrder, getNextTrack]);
 
@@ -443,59 +439,106 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setIsQueueOpen((prev) => !prev);
   }, []);
 
-  // Backward compat: progress as percentage
-  const progress = engine.duration > 0 ? engine.currentTime : 0;
+  // Stable context value
+  const playerContextValue = useMemo(() => ({
+    isPlaying: engine.isPlaying,
+    isBuffering: engine.isBuffering,
+    currentTrack,
+    volume: engine.volume * 100, // 0-100 for UI
+
+    queue,
+    queueIndex,
+    nextTrack,
+    shuffle,
+    repeat,
+
+    searchQuery,
+    isPlayerExpanded,
+    isQueueOpen,
+
+    likedTrackIds,
+    toggleLike,
+    isTrackLiked,
+
+    outputDevices: engine.outputDevices,
+    selectedDevice: engine.selectedDevice,
+    enumerateDevices: engine.enumerateDevices,
+
+    togglePlay,
+    playTrack,
+    pauseTrack,
+    setSearchQuery,
+    togglePlayerExpansion,
+    toggleQueue,
+    setVolume: handleSetVolume,
+    seekTo,
+    skipNext,
+    skipPrev,
+    setQueue,
+    addToQueue,
+    removeFromQueue,
+    reorderQueue,
+    setShuffle: handleSetShuffle,
+    setRepeat,
+    setOutputDevice: engine.setOutputDevice,
+  }), [
+    engine.isPlaying,
+    engine.isBuffering,
+    currentTrack,
+    engine.volume,
+    queue,
+    queueIndex,
+    nextTrack,
+    shuffle,
+    repeat,
+    searchQuery,
+    isPlayerExpanded,
+    isQueueOpen,
+    likedTrackIds,
+    toggleLike,
+    isTrackLiked,
+    engine.outputDevices,
+    engine.selectedDevice,
+    engine.enumerateDevices,
+    togglePlay,
+    playTrack,
+    pauseTrack,
+    togglePlayerExpansion,
+    toggleQueue,
+    handleSetVolume,
+    seekTo,
+    skipNext,
+    skipPrev,
+    setQueue,
+    addToQueue,
+    removeFromQueue,
+    reorderQueue,
+    handleSetShuffle,
+    engine.setOutputDevice
+  ]);
+
+  // Fast context value
+  const playerProgressValue = useMemo(() => {
+    // Fallback to metadata duration if engine duration isn't available yet
+    const engineDuration = engine.duration;
+    const fallbackDuration = currentTrack?.durationSeconds || 0;
+    
+    const displayDuration = (engineDuration && isFinite(engineDuration) && engineDuration > 0)
+      ? engineDuration
+      : fallbackDuration;
+
+    return {
+      currentTime: engine.currentTime,
+      duration: displayDuration,
+      progress: displayDuration > 0 ? (engine.currentTime / displayDuration) * 100 : 0,
+    };
+  }, [engine.currentTime, engine.duration, currentTrack]);
 
   return (
-    <PlayerContext.Provider
-      value={{
-        isPlaying: engine.isPlaying,
-        isBuffering: engine.isBuffering,
-        currentTrack,
-        currentTime: engine.currentTime,
-        duration: engine.duration,
-        volume: engine.volume * 100, // 0-100 for UI
-        progress,
-
-        queue,
-        queueIndex,
-        nextTrack,
-        shuffle,
-        repeat,
-
-        searchQuery,
-        isPlayerExpanded,
-        isQueueOpen,
-
-        likedTrackIds,
-        toggleLike,
-        isTrackLiked,
-
-        outputDevices: engine.outputDevices,
-        selectedDevice: engine.selectedDevice,
-        enumerateDevices: engine.enumerateDevices,
-
-        togglePlay,
-        playTrack,
-        pauseTrack,
-        setSearchQuery,
-        togglePlayerExpansion,
-        toggleQueue,
-        setVolume: handleSetVolume,
-        setProgress: (p: number) => engine.seek(p), // backward compat
-        seekTo,
-        skipNext,
-        skipPrev,
-        setQueue,
-        addToQueue,
-        removeFromQueue,
-        reorderQueue,
-        setShuffle: handleSetShuffle,
-        setRepeat,
-        setOutputDevice: engine.setOutputDevice,
-      }}
-    >
-      {children}
+    <PlayerContext.Provider value={playerContextValue}>
+      <PlayerProgressContext.Provider value={playerProgressValue}>
+        {children}
+      </PlayerProgressContext.Provider>
     </PlayerContext.Provider>
   );
 };
@@ -504,6 +547,14 @@ export const usePlayer = (): PlayerContextType => {
   const context = useContext(PlayerContext);
   if (!context) {
     throw new Error('usePlayer must be used within a PlayerProvider');
+  }
+  return context;
+};
+
+export const usePlayerProgress = (): PlayerProgressContextType => {
+  const context = useContext(PlayerProgressContext);
+  if (!context) {
+    throw new Error('usePlayerProgress must be used within a PlayerProvider');
   }
   return context;
 };

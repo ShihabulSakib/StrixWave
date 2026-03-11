@@ -1,11 +1,3 @@
-/**
- * ConnectionManager — Universal Dropbox Sync Hub
- *
- * Extracted from Sidebar.tsx so it can be triggered from
- * TopNav (all viewports), empty states, or any other entry point.
- * Solves the "Mobile Sync Gap" identified in the audit.
- */
-
 import React, { useState, useCallback } from 'react';
 import { Cloud, RefreshCw, Check, Loader2, X, Music2 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
@@ -22,7 +14,7 @@ interface ConnectionManagerProps {
 
 export const ConnectionManager: React.FC<ConnectionManagerProps> = ({ isOpen, onClose }) => {
   const { isAuthenticated, isLoading: authLoading, login, logout } = useAuth();
-  
+
   useOverlayHistory(isOpen, onClose);
 
   const { setQueue } = usePlayer();
@@ -46,21 +38,9 @@ export const ConnectionManager: React.FC<ConnectionManagerProps> = ({ isOpen, on
         }
       });
 
-      // Load synced tracks into the queue context
+      // Notify other components that new tracks have been synced
       if (tracks.length > 0) {
-        const contextTracks = tracks.map((t) => ({
-          id: t.id,
-          title: t.title,
-          artist: t.artist,
-          album: t.album,
-          duration: t.duration,
-          durationSeconds: t.durationSeconds,
-          addedDate: t.addedDate,
-          coverUrl: t.coverUrl,
-          coverBlob: t.coverBlob,
-          dropboxPath: t.dropboxPath,
-        }));
-        setQueue(contextTracks, 0);
+        window.dispatchEvent(new CustomEvent('library-synced'));
       }
     } catch (err) {
       console.error('[ConnectionManager] Sync failed:', err);
@@ -130,20 +110,10 @@ export const ConnectionManager: React.FC<ConnectionManagerProps> = ({ isOpen, on
                   {isSyncing
                     ? `Scanning... (${syncCount} tracks found)`
                     : syncComplete
-                    ? `Sync Complete! (${syncCount} tracks)`
-                    : 'Sync Library Now'}
+                      ? `Sync Complete! (${syncCount} tracks)`
+                      : 'Sync Library Now'}
                 </span>
               </button>
-
-              {/* Sync progress indicator */}
-              {isSyncing && (
-                <div className="flex items-center gap-2 px-2">
-                  <div className="flex-1 h-1 bg-surface-hover rounded-full overflow-hidden">
-                    <div className="h-full bg-accent rounded-full animate-pulse" style={{ width: '60%' }} />
-                  </div>
-                  <span className="text-xs text-text-secondary">{syncCount} found</span>
-                </div>
-              )}
 
               {/* Disconnect option */}
               <button

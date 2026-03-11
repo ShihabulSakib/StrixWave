@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Play, Pause, Heart, Clock, MoreHorizontal, Download, Loader2, Cloud, Music2, ListMusic } from 'lucide-react';
 import TopNav from './TopNav';
 import TrackCover from './TrackCover';
@@ -203,6 +203,10 @@ export const YourLibrary: React.FC<{ onPlaylistSelect?: (id: string) => void }> 
 
   useEffect(() => {
     loadTracks();
+
+    // Listen for library sync events
+    window.addEventListener('library-synced', loadTracks);
+    return () => window.removeEventListener('library-synced', loadTracks);
   }, [loadTracks]);
 
   const handleTrackClick = useCallback(

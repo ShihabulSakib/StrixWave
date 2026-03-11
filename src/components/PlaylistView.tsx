@@ -22,9 +22,6 @@ interface PlaylistViewProps {
   playlistId?: string | null;
 }
 
-const ROW_HEIGHT = 56;
-const HEADER_THRESHOLD = 320;
-
 interface TrackRowDataProps {
   displayTracks: Track[];
   currentTrack: Track | null;
@@ -299,17 +296,6 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({ playlistId }) => {
       // Parent will handle navigation via state change
     }
     setShowDeleteConfirm(false);
-  };
-
-  const rowProps = {
-    displayTracks: tracks,
-    currentTrack,
-    isPlaying,
-    isBuffering,
-    hoveredTrack,
-    handleTrackClick,
-    setHoveredTrack,
-    onRemoveTrack: playlistId ? handleRemoveTrack : undefined,
   };
 
   const headerInfo = useMemo(() => {

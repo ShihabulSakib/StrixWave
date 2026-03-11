@@ -36,12 +36,19 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
           
           // Shuffle a bit for "discovery" sections
           setLibraryTracks(mapped.sort(() => 0.5 - Math.random()));
+        } else {
+          setLibraryTracks([]);
         }
       } catch (err) {
         console.error('[HomeView] Failed to load library:', err);
       }
     };
+
     loadLibrary();
+
+    // Listen for library sync events
+    window.addEventListener('library-synced', loadLibrary);
+    return () => window.removeEventListener('library-synced', loadLibrary);
   }, []);
 
   const recentlyAdded = [...libraryTracks].sort((a, b) => 

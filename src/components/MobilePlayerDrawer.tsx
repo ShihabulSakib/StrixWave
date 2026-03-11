@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Play,
   Pause,
@@ -16,7 +16,7 @@ import {
   Loader2,
   Music2,
 } from 'lucide-react';
-import { usePlayer, type Track } from '../context/PlayerContext';
+import { usePlayer, usePlayerProgress, type Track } from '../context/PlayerContext';
 import TrackCover from './TrackCover';
 import DeviceSelector from './shared/DeviceSelector';
 import VolumeSlider from './shared/VolumeSlider';
@@ -30,8 +30,6 @@ export const MobilePlayerDrawer: React.FC = () => {
     currentTrack,
     isPlayerExpanded,
     volume,
-    currentTime,
-    duration,
     queue,
     queueIndex,
     shuffle,
@@ -55,10 +53,21 @@ export const MobilePlayerDrawer: React.FC = () => {
     toggleLike,
   } = usePlayer();
 
+  const { currentTime, duration } = usePlayerProgress();
+
   const [showQueue, setShowQueue] = useState(false);
 
-  useOverlayHistory(isPlayerExpanded && !showQueue, togglePlayerExpansion);
-  useOverlayHistory(isPlayerExpanded && showQueue, () => setShowQueue(false));
+  const closeQueue = useCallback(() => setShowQueue(false), []);
+
+  // Use a single history entry for the entire expanded player state (including queue)
+  // This is MUCH more stable than fighting between two hooks.
+  useOverlayHistory(isPlayerExpanded, () => {
+    if (showQueue) {
+      setShowQueue(false);
+    } else {
+      togglePlayerExpansion();
+    }
+  });
 
   if (!currentTrack) return null;
   
@@ -86,7 +95,8 @@ export const MobilePlayerDrawer: React.FC = () => {
     setShowQueue(false);
   };
 
-  // Queue items (upcoming only)
+  // Queue items
+  const previousQueue = queue.slice(0, queueIndex);
   const upcomingQueue = queue.slice(queueIndex + 1);
 
   return (
@@ -98,7 +108,7 @@ export const MobilePlayerDrawer: React.FC = () => {
       />
 
       {/* Drawer Content */}
-      <div className="relative h-full flex flex-col animate-slide-up">
+      <div className="relative h-full flex flex-col animate-slide-up pt-[env(safe-area-inset-top,0px)]">
         {/* Header */}
         <div className="flex items-center justify-between px-4 pt-4 pb-2">
           <button
@@ -116,8 +126,40 @@ export const MobilePlayerDrawer: React.FC = () => {
         {showQueue ? (
           /* ===== Queue View ===== */
           <div className="flex-1 overflow-y-auto px-4 pb-4">
+            {/* Recently Played */}
+            {previousQueue.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2 px-2">
+                  Recently Played
+                </h3>
+                <div className="space-y-1 opacity-60">
+                  {previousQueue.map((track, idx) => (
+                    <div
+                      key={`prev-${track.id}-${idx}`}
+                      className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-surface-hover transition-colors group"
+                      onClick={() => handleQueueTrackClick(track, idx)}
+                    >
+                      <div className="w-10 h-10 flex-shrink-0">
+                        <TrackCover
+                          coverUrl={track.coverUrl}
+                          coverBlob={track.coverBlob}
+                          alt={track.title}
+                          className="w-full h-full rounded object-cover grayscale-[50%]"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-text-primary text-sm font-medium truncate">{track.title}</p>
+                        <p className="text-text-secondary text-xs truncate">{track.artist}</p>
+                      </div>
+                      <span className="text-text-secondary text-xs flex-shrink-0">{track.duration}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Now Playing */}
-            <div className="mb-4">
+            <div className="mb-6">
               <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2 px-2">
                 Now Playing
               </h3>
@@ -292,7 +334,7 @@ export const MobilePlayerDrawer: React.FC = () => {
               </button>
             </div>
 
-            <div className="flex items-center justify-between px-6 pb-8">
+            <div className="flex items-center justify-between px-6 pb-[calc(2rem+env(safe-area-inset-bottom,0px))]">
               {/* Output Device Menu (Drawer) */}
               <DeviceSelector
                 outputDevices={outputDevices}

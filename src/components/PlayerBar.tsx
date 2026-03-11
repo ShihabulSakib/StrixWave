@@ -12,7 +12,7 @@ import {
   ChevronUp,
   Loader2,
 } from 'lucide-react';
-import { usePlayer } from '../context/PlayerContext';
+import { usePlayer, usePlayerProgress } from '../context/PlayerContext';
 import TrackCover from './TrackCover';
 import DeviceSelector from './shared/DeviceSelector';
 import VolumeSlider from './shared/VolumeSlider';
@@ -29,8 +29,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
     currentTrack,
     isPlayerExpanded,
     volume,
-    currentTime,
-    duration,
     shuffle,
     repeat,
     outputDevices,
@@ -49,6 +47,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
     isTrackLiked,
     toggleLike,
   } = usePlayer();
+
+  const { currentTime, duration } = usePlayerProgress();
 
   const isLiked = currentTrack ? isTrackLiked(currentTrack.id) : false;
   const progressBarRef = useRef<HTMLDivElement>(null);
@@ -75,7 +75,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
       <>
         <div
           onClick={togglePlayerExpansion}
-          className="fixed bottom-0 left-0 right-0 bg-surface/80 backdrop-blur-md border-t border-divider px-4 py-3 flex items-center justify-between z-40 cursor-pointer hover:bg-surface-hover/90 transition-colors"
+          style={{ bottom: `calc(4rem + env(safe-area-inset-bottom, 0px))` }}
+          className="fixed left-0 right-0 bg-surface/80 backdrop-blur-md border-t border-divider px-4 py-3 flex items-center justify-between z-40 cursor-pointer hover:bg-surface-hover/90 transition-colors"
         >
           <div className="flex items-center gap-3 flex-1 min-w-0">
             {currentTrack && (
