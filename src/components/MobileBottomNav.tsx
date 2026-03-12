@@ -8,7 +8,7 @@ interface MobileBottomNavProps {
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ activeTab, onTabChange }) => {
   return (
-    <div className="fixed bottom-0 left-0 right-0 h-[calc(4rem+env(safe-area-inset-bottom,0px))] bg-surface/95 backdrop-blur-md border-t border-divider flex items-center justify-around px-2 z-50 md:hidden pb-[env(safe-area-inset-bottom,0px)]">
+    <div className="h-[calc(4rem+env(safe-area-inset-bottom,0px))] bg-surface/95 backdrop-blur-md border-t border-divider flex items-center justify-around px-2 pb-[env(safe-area-inset-bottom,0px)]">
       {navItems.map((item) => (
         <button
           key={item.id}

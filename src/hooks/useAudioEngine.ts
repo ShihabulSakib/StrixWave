@@ -37,6 +37,9 @@ export interface OutputDevice {
 const PREFETCH_THRESHOLD_SECONDS = 30; // Pre-fetch when <30s remaining
 const SKIP_DEBOUNCE_MS = 300;
 const CHUNK_SIZE = 256 * 1024; // 256KB streaming chunks
+const BUFFER_CLEANUP_INTERVAL_MS = 60_000; // Purge played buffer every 60s
+const BUFFER_KEEP_BEHIND_SECONDS = 30; // Keep 30s of played data
+const BUFFER_HARD_CAP_BYTES = 50 * 1024 * 1024; // 50MB hard limit
 
 // Check MSE support for common audio codecs
 const MSE_SUPPORTED = (() => {
@@ -101,6 +104,12 @@ export function useAudioEngine() {
   // Abort controller for chunk downloads
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Buffer cleanup interval ref (L01)
+  const bufferCleanupInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Track total bytes appended for hard cap detection (L01)
+  const totalBytesAppended = useRef(0);
+
   // Mobile detection
   const isMobile = useRef(
     /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
@@ -130,6 +139,13 @@ export function useAudioEngine() {
   }, []);
 
   const cleanupMSE = useCallback(() => {
+    // Clear buffer cleanup interval (L01)
+    if (bufferCleanupInterval.current) {
+      clearInterval(bufferCleanupInterval.current);
+      bufferCleanupInterval.current = null;
+    }
+    totalBytesAppended.current = 0;
+
     if (mediaSourceRef.current) {
       try {
         if (mediaSourceRef.current.readyState === 'open') {
@@ -187,6 +203,33 @@ export function useAudioEngine() {
    * Stream a track using MSE (MediaSource Extensions).
    * Progressively fetches chunks and appends them to the SourceBuffer.
    */
+  /**
+   * L01: Periodically remove played buffer data to prevent QuotaExceededError.
+   */
+  const startBufferCleanup = useCallback(() => {
+    if (bufferCleanupInterval.current) {
+      clearInterval(bufferCleanupInterval.current);
+    }
+
+    bufferCleanupInterval.current = setInterval(() => {
+      const sb = sourceBufferRef.current;
+      const audio = audioRef.current;
+      const ms = mediaSourceRef.current;
+
+      if (!sb || !audio || !ms || ms.readyState !== 'open' || sb.updating) return;
+
+      try {
+        const removeEnd = audio.currentTime - BUFFER_KEEP_BEHIND_SECONDS;
+        if (removeEnd > 0 && sb.buffered.length > 0 && sb.buffered.start(0) < removeEnd) {
+          sb.remove(sb.buffered.start(0), removeEnd);
+          console.log(`[AudioEngine] Buffer cleanup: removed 0-${removeEnd.toFixed(1)}s`);
+        }
+      } catch (err) {
+        console.warn('[AudioEngine] Buffer cleanup error:', err);
+      }
+    }, BUFFER_CLEANUP_INTERVAL_MS);
+  }, []);
+
   const streamWithMSE = useCallback(
     async (dropboxPath: string, mime: string, autoplay: boolean): Promise<void> => {
       const audio = audioRef.current;
@@ -216,24 +259,51 @@ export function useAudioEngine() {
 
             const sb = ms.addSourceBuffer(mime);
             sourceBufferRef.current = sb;
+            totalBytesAppended.current = 0;
+
+            // L01: Start periodic buffer cleanup
+            startBufferCleanup();
 
             const dropbox = DropboxService.getInstance();
-            const link = await dropbox.getTemporaryLink(dropboxPath);
+            let currentLink = await dropbox.getTemporaryLink(dropboxPath);
 
             if (abort.signal.aborted) { reject(new Error('Aborted')); return; }
 
             let offset = 0;
             let firstChunkLoaded = false;
 
-            const fetchNextChunk = async () => {
+            const fetchNextChunk = async (retryCount = 0) => {
               if (abort.signal.aborted) return;
 
+              // L01: Hard cap check — if we've appended 50MB+, force a buffer reset
+              if (totalBytesAppended.current >= BUFFER_HARD_CAP_BYTES) {
+                const removeEnd = audio.currentTime - BUFFER_KEEP_BEHIND_SECONDS;
+                if (removeEnd > 0 && !sb.updating && sb.buffered.length > 0) {
+                  try {
+                    sb.remove(sb.buffered.start(0), removeEnd);
+                    await new Promise<void>((res) => {
+                      sb.addEventListener('updateend', () => res(), { once: true });
+                    });
+                    totalBytesAppended.current = 0;
+                    console.log('[AudioEngine] Hard cap buffer flush triggered');
+                  } catch { /* ignore */ }
+                }
+              }
+
               try {
-                const response = await fetch(link, {
+                const response = await fetch(currentLink, {
                   headers: { Range: `bytes=${offset}-${offset + CHUNK_SIZE - 1}` },
                 });
 
                 if (abort.signal.aborted) return;
+
+                // L04: Handle 403 Forbidden (expired link) — re-fetch link and retry once
+                if (response.status === 403 && retryCount < 1) {
+                  console.warn('[AudioEngine] 403 Forbidden — link expired mid-stream, re-fetching...');
+                  dropbox.invalidateLink(dropboxPath);
+                  currentLink = await dropbox.getTemporaryLink(dropboxPath);
+                  return fetchNextChunk(retryCount + 1);
+                }
 
                 if (!response.ok && response.status !== 206) {
                   if (ms.readyState === 'open') {
@@ -266,6 +336,7 @@ export function useAudioEngine() {
                 if (abort.signal.aborted) return;
 
                 sb.appendBuffer(data);
+                totalBytesAppended.current += data.byteLength;
 
                 await new Promise<void>((res) => {
                   sb.addEventListener('updateend', () => res(), { once: true });
@@ -315,7 +386,7 @@ export function useAudioEngine() {
         initMSE();
       });
     },
-    [cleanupMSE]
+    [cleanupMSE, startBufferCleanup]
   );
 
   /**

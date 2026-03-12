@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { useNotification } from '../components/NotificationProvider';
 import useAudioEngine from '../hooks/useAudioEngine';
 import type { OutputDevice } from '../hooks/useAudioEngine';
+import { getTracksByIds } from '../services/db';
 
 // -------------------------------------------------------------------
 // Track Interface (extended with dropboxPath)
@@ -140,6 +141,31 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       return next;
     });
   }, [info, success]);
+
+  // L03: Validate liked track IDs against IndexedDB — prune orphans
+  useEffect(() => {
+    if (likedTrackIds.length === 0) return;
+
+    let cancelled = false;
+    const validateLikedTracks = async () => {
+      try {
+        const existingTracks = await getTracksByIds(likedTrackIds);
+        const existingIds = new Set(existingTracks.map(t => t.id));
+        const validIds = likedTrackIds.filter(id => existingIds.has(id));
+
+        if (!cancelled && validIds.length !== likedTrackIds.length) {
+          console.log(`[PlayerContext] Pruned ${likedTrackIds.length - validIds.length} orphaned liked track IDs`);
+          setLikedTrackIds(validIds);
+          localStorage.setItem('strixwave-liked-tracks', JSON.stringify(validIds));
+        }
+      } catch (err) {
+        console.warn('[PlayerContext] Failed to validate liked tracks:', err);
+      }
+    };
+
+    validateLikedTracks();
+    return () => { cancelled = true; };
+  }, []); // Run once on mount to clean up orphans
 
   // Shuffle order
   const shuffleOrder = useRef<number[]>([]);

@@ -103,7 +103,7 @@ export const MobilePlayerDrawer: React.FC = () => {
     <div className="fixed inset-0 z-50 md:hidden">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-primary/95 backdrop-blur-lg"
+        className="absolute inset-0 bg-primary/98 backdrop-blur-sm"
         onClick={togglePlayerExpansion}
       />
 

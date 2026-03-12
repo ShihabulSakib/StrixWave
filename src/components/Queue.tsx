@@ -29,7 +29,7 @@ export const Queue: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 w-80 bg-surface border-l border-divider shadow-2xl z-50 flex flex-col transform transition-transform duration-300 ease-in-out">
+    <div className="fixed inset-y-0 right-0 w-80 bg-surface border-l border-divider shadow-2xl z-[55] flex flex-col transform transition-transform duration-300 ease-in-out">
       <div className="flex items-center justify-between px-4 py-4 border-b border-divider">
         <h2 className="text-lg font-bold text-text-primary">Queue</h2>
         <button

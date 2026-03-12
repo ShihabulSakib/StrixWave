@@ -54,6 +54,12 @@ export const VolumeSlider: React.FC<VolumeSliderProps> = ({
       <div
         ref={barRef}
         onClick={handleClick}
+        role="slider"
+        aria-label="Volume"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(volume)}
+        tabIndex={0}
         className="flex-1 h-1 bg-surface-hover rounded-full cursor-pointer"
       >
         <div

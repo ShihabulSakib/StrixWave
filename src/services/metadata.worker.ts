@@ -4,6 +4,11 @@
  * Receives audio file chunk ArrayBuffers and parses them with
  * music-metadata-browser to extract ID3/Vorbis tags and cover art.
  * Keeps the main thread responsive during large library scans.
+ *
+ * AUDIT NOTE: For 20MB+ FLAC files, consider streaming only the first
+ * 512KB for metadata extraction to avoid momentary UI lockup during the
+ * initial postMessage handshake. Current full-ArrayBuffer parsing is
+ * acceptable for most library sizes.
  */
 
 import { Buffer } from 'buffer';

@@ -14,6 +14,7 @@ import {
 import TopNav from './TopNav';
 import TrackCover from './TrackCover';
 import ConnectionManager from './ConnectionManager';
+import TrackRow from './shared/TrackRow';
 import { usePlayer, type Track } from '../context/PlayerContext';
 import { usePlaylists } from '../context/PlaylistContext';
 import { getAllTracks } from '../services/db';
@@ -21,168 +22,6 @@ import { getAllTracks } from '../services/db';
 interface PlaylistViewProps {
   playlistId?: string | null;
 }
-
-interface TrackRowDataProps {
-  displayTracks: Track[];
-  currentTrack: Track | null;
-  isPlaying: boolean;
-  isBuffering: boolean;
-  hoveredTrack: string | null;
-  handleTrackClick: (index: number) => void;
-  setHoveredTrack: (id: string | null) => void;
-  onRemoveTrack?: (trackId: string) => void;
-}
-
-const TrackRow = ({
-  index,
-  style,
-  displayTracks,
-  currentTrack,
-  isPlaying,
-  isBuffering,
-  hoveredTrack,
-  handleTrackClick,
-  setHoveredTrack,
-  onRemoveTrack,
-}: {
-  index: number;
-  style: React.CSSProperties;
-} & TrackRowDataProps) => {
-  const { playlists, addTrackToPlaylist } = usePlaylists();
-  const { isTrackLiked, toggleLike } = usePlayer();
-  const [showAddMenu, setShowAddMenu] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setShowAddMenu(false);
-      }
-    };
-    if (showAddMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showAddMenu]);
-
-  const track = displayTracks[index];
-  if (!track) return null;
-  const isActive = currentTrack?.id === track.id;
-
-  return (
-    <div
-      style={style}
-      className={`group flex items-center md:grid md:grid-cols-[auto_1fr_1fr_auto] gap-3 md:gap-4 px-2 md:px-4 py-1.5 rounded-md hover:bg-surface-hover transition-colors cursor-pointer ${
-        isActive ? 'bg-surface-hover' : ''
-      }`}
-      onClick={() => handleTrackClick(index)}
-      onMouseEnter={() => setHoveredTrack(track.id)}
-      onMouseLeave={() => setHoveredTrack(null)}
-    >
-      <div className="hidden md:flex w-8 items-center justify-center text-text-secondary">
-        {isActive && isBuffering ? (
-          <Loader2 size={16} className="animate-spin text-accent" />
-        ) : isActive && isPlaying ? (
-          <div className="w-4 h-4 flex items-center justify-center gap-0.5">
-            <div className="w-1 h-3 bg-accent rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
-            <div className="w-1 h-4 bg-accent rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
-            <div className="w-1 h-2 bg-accent rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
-          </div>
-        ) : hoveredTrack === track.id ? (
-          <Play size={16} className="fill-current text-text-primary" />
-        ) : (
-          <span className={isActive ? 'text-accent' : ''}>{index + 1}</span>
-        )}
-      </div>
-
-      <div className="flex items-center gap-3 min-w-0 flex-1 md:flex-none">
-        <TrackCover
-          coverUrl={track.coverUrl}
-          coverBlob={track.coverBlob}
-          alt={track.title}
-          className="w-12 h-12 md:w-10 md:h-10 rounded object-cover shadow-sm"
-        />
-        <div className="min-w-0">
-          <p className={`font-semibold truncate ${isActive ? 'text-accent' : 'text-text-primary'}`}>
-            {track.title}
-          </p>
-          <p className="text-text-secondary text-xs truncate group-hover:text-text-primary transition-colors">
-            {track.artist}
-          </p>
-        </div>
-      </div>
-
-      <div className="hidden md:flex items-center text-text-secondary text-sm truncate">
-        {track.album}
-      </div>
-
-      <div className="flex items-center justify-end gap-2 md:gap-4 text-text-secondary text-sm ml-auto">
-        <button
-          className={`transition-all hidden md:block ${isTrackLiked(track.id) ? 'text-accent opacity-100' : 'text-text-primary hover:text-accent opacity-0 group-hover:opacity-100'}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleLike(track.id, track.title);
-          }}
-        >
-          <Heart size={16} fill={isTrackLiked(track.id) ? 'currentColor' : 'none'} />
-        </button>
-        <span className="w-10 text-right hidden md:block tabular-nums">{track.duration}</span>
-        
-        <div className="flex items-center gap-1 relative" ref={menuRef}>
-          {onRemoveTrack && (
-            <button
-              className="text-text-secondary hover:text-red-500 transition-all p-2 md:p-1 md:opacity-0 md:group-hover:opacity-100"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemoveTrack(track.id);
-              }}
-              title="Remove from playlist"
-            >
-              <Trash2 size={16} />
-            </button>
-          )}
-          <button
-            className="text-text-secondary hover:text-text-primary transition-all p-2 md:p-1 md:opacity-0 md:group-hover:opacity-100"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowAddMenu(!showAddMenu);
-            }}
-          >
-            <MoreHorizontal size={20} className="md:w-4 md:h-4" />
-          </button>
-
-          {showAddMenu && (
-            <div className="absolute right-0 bottom-full mb-2 w-48 bg-surface border border-divider rounded-md shadow-xl z-50 py-1 overflow-hidden">
-              <div className="px-3 py-2 text-[10px] font-bold text-text-secondary uppercase border-b border-divider/50 mb-1">
-                Add to playlist
-              </div>
-              <div className="max-h-48 overflow-y-auto custom-scrollbar">
-                {playlists.map(p => (
-                  <button
-                    key={p.id}
-                    className="w-full text-left px-3 py-2 text-xs text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors truncate"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      addTrackToPlaylist(p.id, track.id, track.title);
-                      setShowAddMenu(false);
-                    }}
-                  >
-                    {p.name}
-                  </button>
-                ))}
-                {playlists.length === 0 && (
-                  <div className="px-3 py-2 text-[10px] text-text-secondary italic">
-                    No playlists found
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 export const PlaylistView: React.FC<PlaylistViewProps> = ({ playlistId }) => {
   const {
@@ -196,7 +35,6 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({ playlistId }) => {
 
   const { allPlaylists, getPlaylistTracks, removeTrackFromPlaylist, removePlaylist, toggleFavoritePlaylist } = usePlaylists();
 
-  const [hoveredTrack, setHoveredTrack] = useState<string | null>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
   const [showConnectionManager, setShowConnectionManager] = useState(false);
@@ -416,15 +254,12 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({ playlistId }) => {
               {tracks.map((track, index) => (
                 <TrackRow
                   key={track.id}
+                  track={track}
                   index={index}
-                  style={{}}
-                  displayTracks={tracks}
-                  currentTrack={currentTrack}
+                  isActive={currentTrack?.id === track.id}
                   isPlaying={isPlaying}
                   isBuffering={isBuffering}
-                  hoveredTrack={hoveredTrack}
-                  handleTrackClick={handleTrackClick}
-                  setHoveredTrack={setHoveredTrack}
+                  onTrackClick={handleTrackClick}
                   onRemoveTrack={playlistId && playlistId !== 'liked-songs' ? handleRemoveTrack : undefined}
                 />
               ))}

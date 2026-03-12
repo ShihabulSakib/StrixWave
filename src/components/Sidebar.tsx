@@ -6,7 +6,6 @@ import { navItems } from '../lib/navItems';
 import ConnectionManager from './ConnectionManager';
 
 interface SidebarProps {
-  isExpanded?: boolean;
   activeTab?: string;
   onTabChange?: (tab: string) => void;
   onPlaylistSelect?: (id: string) => void;
@@ -14,7 +13,6 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ 
-  isExpanded = true,
   activeTab = 'home',
   onTabChange,
   onPlaylistSelect,

@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Search as SearchIcon, Play, Clock, Loader2 } from 'lucide-react';
 import TopNav from './TopNav';
 import TrackCover from './TrackCover';
+import TrackRow from './shared/TrackRow';
 import { usePlayer, type Track } from '../context/PlayerContext';
 import { getAllTracks } from '../services/db';
 

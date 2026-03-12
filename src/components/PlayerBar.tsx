@@ -75,8 +75,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({ isMobile = false }) => {
       <>
         <div
           onClick={togglePlayerExpansion}
-          style={{ bottom: `calc(4rem + env(safe-area-inset-bottom, 0px))` }}
-          className="fixed left-0 right-0 bg-surface/80 backdrop-blur-md border-t border-divider px-4 py-3 flex items-center justify-between z-40 cursor-pointer hover:bg-surface-hover/90 transition-colors"
+          className="bg-surface/80 backdrop-blur-md border-t border-divider px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-surface-hover/90 transition-colors"
         >
           <div className="flex items-center gap-3 flex-1 min-w-0">
             {currentTrack && (

@@ -53,7 +53,8 @@ class AuthService {
   private accessToken: string | null = null;
   private refreshToken: string | null = null;
   private tokenExpiry: number = 0; // epoch ms
-  private isExchanging: boolean = false; // Add this
+  private isExchanging: boolean = false;
+  private refreshPromise: Promise<void> | null = null; // L02: atomic lock for token refresh
 
   private constructor() {
     // Hydrate from localStorage
@@ -168,9 +169,18 @@ class AuthService {
       return this.accessToken;
     }
 
+    // L02: If a refresh is already in flight, await it instead of starting another
+    if (this.refreshPromise) {
+      await this.refreshPromise;
+      if (this.accessToken) return this.accessToken;
+    }
+
     // Attempt silent refresh
     if (this.refreshToken) {
-      await this.refreshAccessToken();
+      this.refreshPromise = this.refreshAccessToken().finally(() => {
+        this.refreshPromise = null;
+      });
+      await this.refreshPromise;
       return this.accessToken!;
     }
 

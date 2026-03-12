@@ -87,7 +87,7 @@ const AppContent = memo(() => {
     }
 
     return (
-      <div key={`${activeTab}-${selectedPlaylistId}`} className="flex-1 flex flex-col overflow-hidden animate-fade-in">
+      <div key={`${activeTab}-${selectedPlaylistId}`} className="flex-1 flex flex-col min-h-0 overflow-y-auto animate-fade-in">
         {content}
       </div>
     );
@@ -100,7 +100,6 @@ const AppContent = memo(() => {
         {/* Sidebar - Hidden on mobile */}
         {!isMobile && (
           <Sidebar
-            isExpanded={sidebarExpanded}
             activeTab={activeTab}
             onTabChange={handleTabChange}
             onPlaylistSelect={handlePlaylistSelect}
@@ -114,11 +113,16 @@ const AppContent = memo(() => {
         </main>
       </div>
 
-      {/* Player Bar - Adjusts based on screen size */}
-      <PlayerBar isMobile={isMobile} />
+      {/* Desktop Player Bar */}
+      {!isMobile && <PlayerBar isMobile={false} />}
 
-      {/* Mobile Bottom Navigation - Added for Spotify-like behavior */}
-      {isMobile && <MobileBottomNav activeTab={activeTab} onTabChange={handleTabChange} />}
+      {/* Mobile: Player + BottomNav stacked flex footer — eliminates fixed-position gap (U01) */}
+      {isMobile && (
+        <div className="flex-shrink-0">
+          <PlayerBar isMobile={true} />
+          <MobileBottomNav activeTab={activeTab} onTabChange={handleTabChange} />
+        </div>
+      )}
 
       {/* Mobile Sidebar/Drawer */}
       <MobileNav activeTab={activeTab} onTabChange={handleTabChange} />

@@ -44,9 +44,6 @@ export const TopNav: React.FC<TopNavProps> = ({ title }) => {
 
         {/* Right Section */}
         <div className="flex items-center gap-3">
-          <button className="hidden md:block px-4 py-1.5 bg-text-primary text-primary text-sm font-semibold rounded-full hover:scale-105 transition-transform">
-            Explore Premium
-          </button>
           {/* Sync button — visible on all viewports including mobile */}
           <button
             type="button"

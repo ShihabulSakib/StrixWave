@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Play, Cloud, Music2 } from 'lucide-react';
 import TopNav from './TopNav';
 import AlbumCard from './AlbumCard';
@@ -57,16 +57,14 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
   
   const randomMix = [...libraryTracks].slice(0, 5);
 
-  // Determine greeting based on time of day
-  const getGreeting = () => {
+  // Memoize greeting to prevent recalculation on every render
+  const greeting = useMemo(() => {
     const hour = new Date().getHours();
     if (hour >= 5 && hour < 12) return 'Good Morning';
     if (hour >= 12 && hour < 18) return 'Good Afternoon';
     if (hour >= 18 && hour < 22) return 'Good Evening';
     return 'Good Night';
-  };
-
-  const greeting = getGreeting();
+  }, []);
 
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar">
