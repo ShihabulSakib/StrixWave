@@ -114,10 +114,6 @@ export function useAudioEngine() {
 
   useEffect(() => {
     audioRef.current = new Audio();
-    if (!isMobile.current) {
-      audioRef.current.volume = volume;
-    }
-    enumerateDevices();
     return () => {
       if (audioRef.current) {
         audioRef.current.pause();
@@ -126,7 +122,17 @@ export function useAudioEngine() {
       audioRef.current = null;
       cleanupMSE();
     };
-  }, []);
+  }, [cleanupMSE]);
+
+  useEffect(() => {
+    if (audioRef.current && !isMobile.current) {
+      audioRef.current.volume = volume;
+    }
+  }, [volume]);
+
+  useEffect(() => {
+    enumerateDevices();
+  }, [enumerateDevices]);
 
   const setOutputDevice = useCallback(async (deviceId: string) => {
     setSelectedDevice(deviceId);

@@ -4,7 +4,7 @@ import TopNav from './TopNav';
 import TrackCover from './TrackCover';
 import { usePlayer, type Track } from '../context/PlayerContext';
 import { usePlaylists } from '../context/PlaylistContext';
-import { getAllTracks } from '../services/db';
+import { getAllTracks, getTracksByIds } from '../services/db';
 
 export const SearchView: React.FC = () => {
   const { searchQuery, setSearchQuery, currentTrack, isPlaying, setQueue } = usePlayer();
@@ -85,6 +85,11 @@ export const SearchView: React.FC = () => {
         setShowResults(false);
       }
     }, 200);
+  };
+
+  // Helper to find which playlists a track belongs to
+  const getTrackPlaylists = (trackId: string) => {
+    return allPlaylists.filter(p => p.trackIds.includes(trackId));
   };
 
   // Helper to get playlist cover component
@@ -318,8 +323,6 @@ export const SearchView: React.FC = () => {
         )}
       </div>
     </div>
-  );
-};
   );
 };
 

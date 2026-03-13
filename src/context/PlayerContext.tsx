@@ -167,7 +167,7 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     validateLikedTracks();
     return () => { cancelled = true; };
-  }, []); // Run once on mount to clean up orphans
+  }, [likedTrackIds]);
 
   // Shuffle order
   const shuffleOrder = useRef<number[]>([]);
@@ -303,7 +303,7 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       engine.prefetchNextTrack(nextTrack as any);
       engine.updateNextTrack(nextTrack as any);
     }
-  }, [nextTrack?.id, nextTrack?.providerPath, engine]);
+  }, [nextTrack, engine]);
 
   // -------------------------------------------------------------------
   // Actions

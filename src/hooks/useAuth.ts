@@ -40,18 +40,18 @@ export function useAuth(): UseAuthReturn {
 
     init();
     return () => { cancelled = true; };
-  }, []);
+  }, [authManager]);
 
   const isProviderAuthenticated = useCallback((providerId: string) => {
     return authManager.getProvider(providerId)?.isAuthenticated() || false;
-  }, []);
+  }, [authManager]);
 
   const login = useCallback(async (providerId: string = 'dropbox') => {
     const provider = authManager.getProvider(providerId);
     if (provider) {
       await provider.login();
     }
-  }, []);
+  }, [authManager]);
 
   const logout = useCallback((providerId?: string) => {
     if (providerId) {
@@ -61,7 +61,7 @@ export function useAuth(): UseAuthReturn {
     }
     setIsAuthenticated(authManager.isAuthenticated());
     setTick(t => t + 1);
-  }, []);
+  }, [authManager]);
 
   const getAccessToken = useCallback(async (providerId: string = 'dropbox') => {
     try {
@@ -69,7 +69,7 @@ export function useAuth(): UseAuthReturn {
     } catch {
       return null;
     }
-  }, []);
+  }, [authManager]);
 
   return { 
     isAuthenticated, 
