@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Heart, Music2, ListMusic, Loader2 } from 'lucide-react';
+import { Plus, Heart, Music2, ListMusic, Loader2, Cloud } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { usePlaylists } from '../context/PlaylistContext';
 import { navItems } from '../lib/navItems';
@@ -64,7 +64,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Divider */}
         <div className="mx-4 border-t border-divider/50" />
 
-        {/* Dropbox Connection */}
+        {/* Cloud Connections */}
         <div className="px-4 pt-4 space-y-2">
           {authLoading ? (
             <div className="flex items-center gap-3 px-4 py-3 text-text-secondary bg-surface-hover/30 rounded-md">
@@ -80,9 +80,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   : 'bg-accent hover:bg-accent-hover text-primary font-bold shadow-lg shadow-accent/20'
               }`}
             >
-              <Music2 size={20} className="group-hover:scale-110 transition-transform" />
+              <Cloud size={20} className="group-hover:scale-110 transition-transform" />
               <span className="text-sm font-bold tracking-tight">
-                {isAuthenticated ? 'Sync Library' : 'Connect Dropbox'}
+                {isAuthenticated ? 'Manage Sources' : 'Connect Cloud'}
               </span>
             </button>
           )}

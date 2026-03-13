@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Play, Cloud, Music2 } from 'lucide-react';
+import { Play, Cloud, Music2, Plus } from 'lucide-react';
 import TopNav from './TopNav';
 import AlbumCard from './AlbumCard';
 import TrackCover from './TrackCover';
@@ -31,7 +31,8 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
             addedDate: t.addedDate,
             coverUrl: t.coverUrl,
             coverBlob: t.coverBlob,
-            dropboxPath: t.dropboxPath,
+            providerId: t.providerId,
+            providerPath: t.providerPath,
           }));
           
           // Shuffle a bit for "discovery" sections
@@ -106,18 +107,18 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
               /* ===== Empty State with CTA ===== */
               <div className="col-span-full flex flex-col items-center py-12 text-center">
                 <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mb-6">
-                  <Music2 size={36} className="text-accent" />
+                  <Cloud size={36} className="text-accent" />
                 </div>
                 <h3 className="text-xl font-bold text-text-primary mb-2">Welcome to Strixwave</h3>
                 <p className="text-text-secondary text-sm max-w-sm mb-6">
-                  Connect your Dropbox account to sync and stream your personal music library.
+                  Connect your cloud storage accounts to sync and stream your personal music library.
                 </p>
                 <button
                   onClick={() => setShowConnectionManager(true)}
-                  className="flex items-center gap-3 px-8 py-4 rounded-lg bg-accent hover:bg-accent-hover text-primary font-semibold transition-all hover:scale-105 shadow-lg"
+                  className="flex items-center gap-3 px-8 py-4 rounded-lg bg-accent hover:bg-accent-hover text-primary font-bold transition-all hover:scale-105 shadow-lg shadow-accent/20"
                 >
-                  <Cloud size={22} />
-                  <span>Connect & Sync Dropbox</span>
+                  <Plus size={22} />
+                  <span>Connect Cloud Source</span>
                 </button>
               </div>
             )}

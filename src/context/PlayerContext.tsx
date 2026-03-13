@@ -5,7 +5,7 @@ import type { OutputDevice } from '../hooks/useAudioEngine';
 import { getTracksByIds } from '../services/db';
 
 // -------------------------------------------------------------------
-// Track Interface (extended with dropboxPath)
+// Track Interface (aligned with StoredTrack)
 // -------------------------------------------------------------------
 
 export interface Track {
@@ -17,9 +17,11 @@ export interface Track {
   durationSeconds: number;
   addedDate: string;
   coverUrl: string;
-  coverBlob?: Blob; // Added for persistence fix
+  coverBlob?: Blob;
   audioUrl?: string;
-  dropboxPath?: string;
+  providerId: string;
+  providerPath: string;
+  fileSize?: number;
 }
 
 // -------------------------------------------------------------------
@@ -217,9 +219,9 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     if (repeat === 'one') {
       // Replay current
       const track = queue[queueIndex];
-      if (track?.dropboxPath) {
+      if (track?.providerPath) {
         const next = getNextTrack();
-        engine.playTrack(track.dropboxPath, next?.dropboxPath);
+        engine.playTrack(track as any, next as any);
       }
       return;
     }
@@ -256,7 +258,7 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setCurrentTrack(track);
 
     // Update engine with the next-next track for prefetching
-    if (track?.dropboxPath) {
+    if (track?.providerPath) {
       // We need the track after this one for prefetching
       let upcomingNext: Track | null = null;
       if (shuffle) {
@@ -278,7 +280,7 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       
       // Always play the new track normaly. 
       // The engine handles the internal state if it's already playing.
-      engine.playTrack(track.dropboxPath, upcomingNext?.dropboxPath);
+      engine.playTrack(track as any, upcomingNext as any);
     }
   }, [queue, queueIndex, shuffle, repeat, engine, generateShuffleOrder, getNextTrack]);
 
@@ -297,11 +299,11 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // -------------------------------------------------------------------
 
   useEffect(() => {
-    if (nextTrack?.dropboxPath) {
-      engine.prefetchNextTrack(nextTrack.dropboxPath);
-      engine.updateNextTrack(nextTrack.dropboxPath);
+    if (nextTrack?.providerPath) {
+      engine.prefetchNextTrack(nextTrack as any);
+      engine.updateNextTrack(nextTrack as any);
     }
-  }, [nextTrack?.id, nextTrack?.dropboxPath, engine]);
+  }, [nextTrack?.id, nextTrack?.providerPath, engine]);
 
   // -------------------------------------------------------------------
   // Actions
@@ -319,7 +321,7 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     (track: Track) => {
       setCurrentTrack(track);
 
-      if (track.dropboxPath) {
+      if (track.providerPath) {
         // Find track in queue or add it
         const idx = queue.findIndex((t) => t.id === track.id);
         if (idx >= 0) {
@@ -332,10 +334,10 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         }
 
         const next = getNextTrack();
-        engine.playTrack(track.dropboxPath, next?.dropboxPath);
+        engine.playTrack(track as any, next as any);
       } else {
         // Mock track — just update UI state
-        console.log('Playing track:', track.title, '| No dropboxPath — mock mode');
+        console.log('Playing track:', track.title, '| No providerPath — mock mode');
       }
     },
     [queue, engine, getNextTrack]
@@ -386,9 +388,9 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setQueueIndex(prevIdx);
     const track = queue[prevIdx];
     setCurrentTrack(track);
-    if (track?.dropboxPath) {
+    if (track?.providerPath) {
       const next = getNextTrack();
-      engine.playTrack(track.dropboxPath, next?.dropboxPath);
+      engine.playTrack(track as any, next as any);
     }
   }, [engine, queue, queueIndex, shuffle, getNextTrack]);
 
@@ -402,9 +404,9 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       const track = tracks[startIndex];
       if (track) {
         setCurrentTrack(track);
-        if (track.dropboxPath) {
+        if (track.providerPath) {
           const next = tracks[startIndex + 1];
-          engine.playTrack(track.dropboxPath, next?.dropboxPath);
+          engine.playTrack(track as any, next as any);
         }
       }
     },

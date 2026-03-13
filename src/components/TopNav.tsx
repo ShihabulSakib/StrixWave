@@ -44,21 +44,20 @@ export const TopNav: React.FC<TopNavProps> = ({ title }) => {
 
         {/* Right Section */}
         <div className="flex items-center gap-3">
-          {/* Sync button — visible on all viewports including mobile */}
+          {/* Manage Sources button — visible on all viewports */}
           <button
             type="button"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              // Small delay ensures no conflict with other active history listeners
               setTimeout(() => setShowConnectionManager(true), 50);
             }}
             className="w-8 h-8 rounded-full bg-surface flex items-center justify-center text-text-secondary hover:text-accent hover:scale-105 transition-all"
-            title="Dropbox Sync"
+            title="Manage Cloud Sources"
           >
             <Cloud size={18} />
           </button>
-          <button className="hidden md:flex w-8 h-8 rounded-full bg-surface items-center justify-center text-text-secondary hover:text-text-primary hover:scale-105 transition-all">
+          <button className="flex w-8 h-8 rounded-full bg-surface items-center justify-center text-text-secondary hover:text-text-primary hover:scale-105 transition-all">
             <Settings size={18} />
           </button>
           <button className="hidden md:flex w-8 h-8 rounded-full bg-accent items-center justify-center text-primary font-semibold hover:scale-105 transition-transform">

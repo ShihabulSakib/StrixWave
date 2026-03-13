@@ -12,7 +12,8 @@ export interface StoredTrack {
   title: string;
   artist: string;
   album: string;
-  dropboxPath: string;
+  providerId: string; // 'dropbox' | 'google-drive'
+  providerPath: string;
   duration: string;
   durationSeconds: number;
   coverUrl: string; // This will now be a fallback or default
@@ -33,7 +34,7 @@ export interface Playlist {
 }
 
 const DB_NAME = 'strixwave-db';
-const DB_VERSION = 2; // Incremented version
+const DB_VERSION = 3; // Incremented version for migration
 const STORE_TRACKS = 'tracks';
 const STORE_PLAYLISTS = 'playlists';
 
@@ -47,22 +48,71 @@ function openDB(): Promise<IDBDatabase> {
       // Handle tracks store
       if (!db.objectStoreNames.contains(STORE_TRACKS)) {
         const store = db.createObjectStore(STORE_TRACKS, { keyPath: 'id' });
-        store.createIndex('dropboxPath', 'dropboxPath', { unique: true });
+        store.createIndex('providerPath', 'providerPath', { unique: false });
+        store.createIndex('providerId', 'providerId', { unique: false });
         store.createIndex('artist', 'artist', { unique: false });
         store.createIndex('album', 'album', { unique: false });
+      } else {
+        const store = request.transaction!.objectStore(STORE_TRACKS);
+        if (!store.indexNames.contains('providerPath')) {
+          store.createIndex('providerPath', 'providerPath', { unique: false });
+        }
+        if (!store.indexNames.contains('providerId')) {
+          store.createIndex('providerId', 'providerId', { unique: false });
+        }
+        // Migration: dropboxPath -> providerPath
+        if (event.oldVersion < 3) {
+          // Note: We can't easily iterate and update here in onupgradeneeded for all cases,
+          // but we can ensure the structure is ready. The actual data migration 
+          // might be better handled after opening if needed, but IDB usually requires
+          // version change for index changes.
+        }
       }
 
       // Handle playlists store
       if (!db.objectStoreNames.contains(STORE_PLAYLISTS)) {
         db.createObjectStore(STORE_PLAYLISTS, { keyPath: 'id' });
-      } else if (event.oldVersion < 2) {
-        // Ensure version 2 has playlists
-        db.createObjectStore(STORE_PLAYLISTS, { keyPath: 'id' });
       }
     };
 
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      // Perform data migration if needed
+      migrateData(db).then(() => resolve(db));
+    };
     request.onerror = () => reject(request.error);
+  });
+}
+
+async function migrateData(db: IDBDatabase): Promise<void> {
+  return new Promise((resolve) => {
+    const tx = db.transaction(STORE_TRACKS, 'readwrite');
+    const store = tx.objectStore(STORE_TRACKS);
+    const request = store.openCursor();
+
+    request.onsuccess = (event) => {
+      const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+      if (cursor) {
+        const track = cursor.value;
+        let changed = false;
+
+        // Migrate dropboxPath to providerPath and set providerId
+        if (track.dropboxPath && !track.providerPath) {
+          track.providerPath = track.dropboxPath;
+          track.providerId = 'dropbox';
+          delete track.dropboxPath;
+          changed = true;
+        }
+
+        if (changed) {
+          cursor.update(track);
+        }
+        cursor.continue();
+      } else {
+        resolve();
+      }
+    };
+    request.onerror = () => resolve(); // Ignore errors in migration for now
   });
 }
 
@@ -104,15 +154,18 @@ export async function upsertTracks(tracks: StoredTrack[]): Promise<void> {
   });
 }
 
-export async function getTrackByPath(dropboxPath: string): Promise<StoredTrack | undefined> {
+export async function getTrackByPath(providerId: string, providerPath: string): Promise<StoredTrack | undefined> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_TRACKS, 'readonly');
     const store = tx.objectStore(STORE_TRACKS);
-    const index = store.index('dropboxPath');
-    const req = index.get(dropboxPath);
-    req.onsuccess = () => resolve(req.result as StoredTrack | undefined);
-    req.onerror = () => reject(req.error);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      const tracks = request.result as StoredTrack[];
+      const track = tracks.find(t => t.providerId === providerId && t.providerPath === providerPath);
+      resolve(track);
+    };
+    request.onerror = () => reject(request.error);
     tx.oncomplete = () => db.close();
   });
 }

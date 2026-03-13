@@ -1,50 +1,36 @@
-/**
- * useAuth — React Hook wrapping AuthService
- *
- * Provides: { isAuthenticated, isLoading, login, logout, accessToken }
- * On mount: checks URL for OAuth callback, then checks for existing refresh_token.
- */
-
 import { useState, useEffect, useCallback } from 'react';
-import AuthService from '../services/AuthService';
+import AuthManager from '../services/auth/AuthManager';
 
 interface UseAuthReturn {
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: () => Promise<void>;
-  logout: () => void;
-  accessToken: string | null;
+  isProviderAuthenticated: (providerId: string) => boolean;
+  login: (providerId?: string) => Promise<void>;
+  logout: (providerId?: string) => void;
+  getAccessToken: (providerId?: string) => Promise<string | null>;
 }
 
 export function useAuth(): UseAuthReturn {
-  const auth = AuthService.getInstance();
-
-  const [isAuthenticated, setIsAuthenticated] = useState(auth.isAuthenticated);
+  const authManager = AuthManager.getInstance();
+  const [isAuthenticated, setIsAuthenticated] = useState(authManager.isAuthenticated());
   const [isLoading, setIsLoading] = useState(true);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [, setTick] = useState(0); // For forcing re-renders on auth state change
 
   useEffect(() => {
     let cancelled = false;
 
     const init = async () => {
       try {
-        // 1. Check if this is an OAuth callback
-        const wasCallback = await auth.handleCallback();
-
-        if (wasCallback || auth.isAuthenticated) {
-          // 2. Try to get a valid access token (will refresh if needed)
-          const token = await auth.getAccessToken();
-          if (!cancelled) {
-            setAccessToken(token);
-            setIsAuthenticated(true);
-          }
+        const wasCallback = await authManager.handleCallback();
+        if (wasCallback) {
+          // Force update
+          setTick(t => t + 1);
+        }
+        if (!cancelled) {
+          setIsAuthenticated(authManager.isAuthenticated());
         }
       } catch (err) {
         console.error('[useAuth] Init failed:', err);
-        if (!cancelled) {
-          setIsAuthenticated(false);
-          setAccessToken(null);
-        }
       } finally {
         if (!cancelled) {
           setIsLoading(false);
@@ -54,19 +40,45 @@ export function useAuth(): UseAuthReturn {
 
     init();
     return () => { cancelled = true; };
-  }, [auth]);
+  }, []);
 
-  const login = useCallback(async () => {
-    await auth.login();
-  }, [auth]);
+  const isProviderAuthenticated = useCallback((providerId: string) => {
+    return authManager.getProvider(providerId)?.isAuthenticated() || false;
+  }, []);
 
-  const logout = useCallback(() => {
-    auth.logout();
-    setIsAuthenticated(false);
-    setAccessToken(null);
-  }, [auth]);
+  const login = useCallback(async (providerId: string = 'dropbox') => {
+    const provider = authManager.getProvider(providerId);
+    if (provider) {
+      await provider.login();
+    }
+  }, []);
 
-  return { isAuthenticated, isLoading, login, logout, accessToken };
+  const logout = useCallback((providerId?: string) => {
+    if (providerId) {
+      authManager.getProvider(providerId)?.logout();
+    } else {
+      authManager.getAllProviders().forEach(p => p.logout());
+    }
+    setIsAuthenticated(authManager.isAuthenticated());
+    setTick(t => t + 1);
+  }, []);
+
+  const getAccessToken = useCallback(async (providerId: string = 'dropbox') => {
+    try {
+      return await authManager.getProvider(providerId)?.getAccessToken() || null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  return { 
+    isAuthenticated, 
+    isLoading, 
+    isProviderAuthenticated,
+    login, 
+    logout, 
+    getAccessToken 
+  };
 }
 
 export default useAuth;

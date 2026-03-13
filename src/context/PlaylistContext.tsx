@@ -169,7 +169,8 @@ export const PlaylistProvider: React.FC<{ children: ReactNode }> = ({ children }
       addedDate: t.addedDate,
       coverUrl: t.coverUrl,
       coverBlob: t.coverBlob,
-      dropboxPath: t.dropboxPath,
+      providerId: t.providerId,
+      providerPath: t.providerPath,
     }));
   }, [likedTrackIds, playlists]);
 

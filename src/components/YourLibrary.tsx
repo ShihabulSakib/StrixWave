@@ -61,7 +61,8 @@ export const YourLibrary: React.FC<{ onPlaylistSelect?: (id: string) => void }> 
         addedDate: t.addedDate,
         coverUrl: t.coverUrl,
         coverBlob: t.coverBlob,
-        dropboxPath: t.dropboxPath,
+        providerId: t.providerId,
+        providerPath: t.providerPath,
       }));
       setTracks(mapped);
     } catch (err) {

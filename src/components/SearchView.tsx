@@ -45,7 +45,8 @@ export const SearchView: React.FC = () => {
             addedDate: t.addedDate,
             coverUrl: t.coverUrl,
             coverBlob: t.coverBlob,
-            dropboxPath: t.dropboxPath,
+            providerId: t.providerId,
+            providerPath: t.providerPath,
           }));
           setLibraryTracks(mapped);
         }

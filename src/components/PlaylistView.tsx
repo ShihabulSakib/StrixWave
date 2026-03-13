@@ -70,7 +70,8 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({ playlistId }) => {
             addedDate: t.addedDate,
             coverUrl: t.coverUrl,
             coverBlob: t.coverBlob,
-            dropboxPath: t.dropboxPath,
+            providerId: t.providerId,
+            providerPath: t.providerPath,
           }));
         setTracks(mapped);
       } else if (playlistId) {
@@ -88,7 +89,8 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({ playlistId }) => {
           addedDate: t.addedDate,
           coverUrl: t.coverUrl,
           coverBlob: t.coverBlob,
-          dropboxPath: t.dropboxPath,
+          providerId: t.providerId,
+          providerPath: t.providerPath,
         }));
         setTracks(mapped);
       }
