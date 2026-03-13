@@ -149,9 +149,6 @@ const AppContent = memo(() => {
         </div>
       )}
 
-      {/* Mobile Sidebar/Drawer */}
-      <MobileNav activeTab={activeTab} onTabChange={handleTabChange} />
-
       {/* Desktop/Tablet Queue Drawer */}
       <Queue />
 

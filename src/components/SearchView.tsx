@@ -49,6 +49,8 @@ export const SearchView: React.FC = () => {
             providerPath: t.providerPath,
           }));
           setLibraryTracks(mapped);
+        } else {
+          setLibraryTracks([]);
         }
       } catch (err) {
         console.error('[SearchView] Failed to load library:', err);
@@ -56,7 +58,12 @@ export const SearchView: React.FC = () => {
         setIsLoading(false);
       }
     };
+
     loadLibrary();
+
+    // Listen for library sync events to refresh search
+    window.addEventListener('library-synced', loadLibrary);
+    return () => window.removeEventListener('library-synced', loadLibrary);
   }, []);
 
   // Filter tracks based on search query

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Settings, User, Cloud, Menu } from 'lucide-react';
+import { Cloud, Menu } from 'lucide-react';
 import ConnectionManager from './ConnectionManager';
 
 interface TopNavProps {
@@ -24,22 +24,17 @@ export const TopNav: React.FC<TopNavProps> = ({ title }) => {
       <nav
         className="sticky top-0 z-50 flex items-center justify-between px-4 py-3 transition-all duration-300 bg-[#0A192F]/70 backdrop-blur-md border-b border-white/10"
       >
-        {/* Navigation Arrows & Mobile Menu */}
+        {/* Navigation & Mobile Menu */}
         <div className="flex items-center gap-2">
           <button 
             className="md:hidden w-8 h-8 flex items-center justify-center text-text-secondary hover:text-text-primary transition-all"
             onClick={() => window.dispatchEvent(new CustomEvent('toggle-mobile-nav'))}
           >
             <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
-              <User size={18} />
+              <Menu size={18} />
             </div>
           </button>
-          <button className="hidden md:flex w-8 h-8 rounded-full bg-surface/80 items-center justify-center text-text-secondary hover:text-text-primary hover:scale-105 transition-all">
-            <ChevronLeft size={20} />
-          </button>
-          <button className="hidden md:flex w-8 h-8 rounded-full bg-surface/80 items-center justify-center text-text-secondary hover:text-text-primary hover:scale-105 transition-all">
-            <ChevronRight size={20} />
-          </button>
+          {title && <h1 className="text-lg font-bold text-text-primary ml-2">{title}</h1>}
         </div>
 
         {/* Right Section */}
@@ -56,12 +51,6 @@ export const TopNav: React.FC<TopNavProps> = ({ title }) => {
             title="Manage Cloud Sources"
           >
             <Cloud size={18} />
-          </button>
-          <button className="flex w-8 h-8 rounded-full bg-surface items-center justify-center text-text-secondary hover:text-text-primary hover:scale-105 transition-all">
-            <Settings size={18} />
-          </button>
-          <button className="hidden md:flex w-8 h-8 rounded-full bg-accent items-center justify-center text-primary font-semibold hover:scale-105 transition-transform">
-            <User size={16} />
           </button>
         </div>
       </nav>
