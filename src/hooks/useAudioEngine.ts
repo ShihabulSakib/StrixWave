@@ -19,11 +19,6 @@ export interface AudioEngineState {
   isMobile: boolean;
 }
 
-export interface OutputDevice {
-  deviceId: string;
-  label: string;
-}
-
 // Constants
 const PREFETCH_THRESHOLD_SECONDS = 30;
 const SKIP_DEBOUNCE_MS = 300;
@@ -76,24 +71,6 @@ export function useAudioEngine() {
   const totalBytesAppended = useRef(0);
   const isMobile = useRef(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
 
-  const [outputDevices, setOutputDevices] = useState<OutputDevice[]>([]);
-  const [selectedDevice, setSelectedDevice] = useState<string>('default');
-
-  const enumerateDevices = useCallback(async () => {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const audioOutputs = devices
-        .filter((d) => d.kind === 'audiooutput')
-        .map((d) => ({
-          deviceId: d.deviceId,
-          label: d.label || (d.deviceId === 'default' ? 'System Default' : `Speaker ${d.deviceId.slice(0, 8)}`),
-        }));
-      setOutputDevices(audioOutputs);
-    } catch {
-      console.warn('[AudioEngine] Could not enumerate audio devices');
-    }
-  }, []);
-
   const cleanupMSE = useCallback(() => {
     if (bufferCleanupInterval.current) {
       clearInterval(bufferCleanupInterval.current);
@@ -129,22 +106,6 @@ export function useAudioEngine() {
       audioRef.current.volume = volume;
     }
   }, [volume]);
-
-  useEffect(() => {
-    enumerateDevices();
-  }, [enumerateDevices]);
-
-  const setOutputDevice = useCallback(async (deviceId: string) => {
-    setSelectedDevice(deviceId);
-    const el = audioRef.current;
-    if (el && 'setSinkId' in el) {
-      try {
-        await (el as any).setSinkId(deviceId);
-      } catch (err) {
-        console.warn('[AudioEngine] setSinkId failed:', err);
-      }
-    }
-  }, []);
 
   const startBufferCleanup = useCallback(() => {
     if (bufferCleanupInterval.current) {
@@ -315,8 +276,6 @@ export function useAudioEngine() {
           return;
         }
 
-        // Direct playback with headers is tricky for <audio>.
-        // For Google Drive, we might need a Blob URL if we want to use the Authorization header.
         if (Object.keys(headers).length > 0) {
           const response = await fetch(link, { headers });
           const blob = await response.blob();
@@ -533,10 +492,6 @@ export function useAudioEngine() {
     canSkip,
     onTrackEnd,
     prefetchNextTrack,
-    outputDevices,
-    selectedDevice,
-    setOutputDevice,
-    enumerateDevices,
   };
 }
 

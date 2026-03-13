@@ -1,13 +1,14 @@
 import { AuthProvider } from '../types';
 
 const DROPBOX_APP_KEY = import.meta.env.VITE_DROPBOX_APP_KEY as string;
-const REDIRECT_URI = window.location.origin;
+// Ensure redirect URI is consistent (no trailing slash)
+const REDIRECT_URI = window.location.origin.replace(/\/$/, '');
 
 // LocalStorage keys
 const LS_ACCESS_TOKEN = 'strixwave_dbx_access_token';
 const LS_REFRESH_TOKEN = 'strixwave_dbx_refresh_token';
 const LS_TOKEN_EXPIRY = 'strixwave_dbx_token_expiry';
-const LS_CODE_VERIFIER = 'strixwave_dbx_code_verifier';
+const LS_CODE_VERIFIER = 'strixwave_dbx_code_verifier_v2'; // Standardized key
 
 // PKCE Helpers
 function generateRandomString(length: number): string {

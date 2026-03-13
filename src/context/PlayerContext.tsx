@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode, useMemo } from 'react';
 import { useNotification } from '../components/NotificationProvider';
 import useAudioEngine from '../hooks/useAudioEngine';
-import type { OutputDevice } from '../hooks/useAudioEngine';
 import { getTracksByIds } from '../services/db';
+import { extractTheme, generateThemeFromTitle, type TrackTheme } from '../lib/color-utils';
 
 // -------------------------------------------------------------------
 // Track Interface (aligned with StoredTrack)
@@ -36,6 +36,7 @@ interface PlayerContextType {
   isBuffering: boolean;
   currentTrack: Track | null;
   volume: number;
+  trackTheme: TrackTheme;
 
   // Queue
   queue: Track[];
@@ -54,11 +55,6 @@ interface PlayerContextType {
   toggleLike: (trackId: string, trackTitle?: string) => void;
   isTrackLiked: (trackId: string) => boolean;
 
-  // Audio output
-  outputDevices: OutputDevice[];
-  selectedDevice: string;
-  enumerateDevices: () => Promise<void>;
-
   // Actions
   togglePlay: () => void;
   playTrack: (track: Track) => void;
@@ -76,7 +72,6 @@ interface PlayerContextType {
   reorderQueue: (from: number, to: number) => void;
   setShuffle: (on: boolean) => void;
   setRepeat: (mode: RepeatMode) => void;
-  setOutputDevice: (deviceId: string) => void;
 }
 
 interface PlayerProgressContextType {
@@ -102,13 +97,37 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState<RepeatMode>('off');
 
-  // Current track (derived from queue)
+  // Current track & dynamic theme
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
+  const [trackTheme, setTrackTheme] = useState<TrackTheme>({
+    primary: '#0A192F',
+    secondary: '#112240',
+    accent: '#FFB100',
+    isDark: true,
+  });
 
   // UI state
   const [searchQuery, setSearchQuery] = useState('');
   const [isPlayerExpanded, setIsPlayerExpanded] = useState(false);
   const [isQueueOpen, setIsQueueOpen] = useState(false);
+
+  // Update theme when track changes
+  useEffect(() => {
+    if (!currentTrack) return;
+
+    const updateTheme = async () => {
+      const hasRealArt = currentTrack.coverBlob || (currentTrack.coverUrl && !currentTrack.coverUrl.includes('images.unsplash.com'));
+      if (hasRealArt) {
+        const theme = await extractTheme(currentTrack.coverBlob || currentTrack.coverUrl);
+        setTrackTheme(theme);
+      } else {
+        const theme = generateThemeFromTitle(currentTrack.title);
+        setTrackTheme(theme);
+      }
+    };
+
+    updateTheme();
+  }, [currentTrack]);
 
   // Liked tracks state
   const [likedTrackIds, setLikedTrackIds] = useState<string[]>(() => {
@@ -299,7 +318,7 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // -------------------------------------------------------------------
 
   useEffect(() => {
-    if (nextTrack?.providerPath) {
+    if (nextTrack) {
       engine.prefetchNextTrack(nextTrack as any);
       engine.updateNextTrack(nextTrack as any);
     }
@@ -473,6 +492,7 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     isBuffering: engine.isBuffering,
     currentTrack,
     volume: engine.volume * 100, // 0-100 for UI
+    trackTheme,
 
     queue,
     queueIndex,
@@ -487,10 +507,6 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     likedTrackIds,
     toggleLike,
     isTrackLiked,
-
-    outputDevices: engine.outputDevices,
-    selectedDevice: engine.selectedDevice,
-    enumerateDevices: engine.enumerateDevices,
 
     togglePlay,
     playTrack,
@@ -508,12 +524,12 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     reorderQueue,
     setShuffle: handleSetShuffle,
     setRepeat,
-    setOutputDevice: engine.setOutputDevice,
   }), [
     engine.isPlaying,
     engine.isBuffering,
     currentTrack,
     engine.volume,
+    trackTheme,
     queue,
     queueIndex,
     nextTrack,
@@ -525,9 +541,6 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     likedTrackIds,
     toggleLike,
     isTrackLiked,
-    engine.outputDevices,
-    engine.selectedDevice,
-    engine.enumerateDevices,
     togglePlay,
     playTrack,
     pauseTrack,
@@ -541,8 +554,7 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     addToQueue,
     removeFromQueue,
     reorderQueue,
-    handleSetShuffle,
-    engine.setOutputDevice
+    handleSetShuffle
   ]);
 
   // Fast context value

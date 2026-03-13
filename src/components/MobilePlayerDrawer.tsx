@@ -12,14 +12,11 @@ import {
   ChevronLeft,
   ListMusic,
   X,
-  GripVertical,
   Loader2,
   Music2,
 } from 'lucide-react';
 import { usePlayer, usePlayerProgress, type Track } from '../context/PlayerContext';
 import TrackCover from './TrackCover';
-import DeviceSelector from './shared/DeviceSelector';
-import VolumeSlider from './shared/VolumeSlider';
 import { formatTime, getNextRepeatMode, getSeekFraction, getTouchSeekFraction } from '../lib/audio-utils';
 import { useOverlayHistory } from '../hooks/useHistoryHook';
 
@@ -29,38 +26,28 @@ export const MobilePlayerDrawer: React.FC = () => {
     isBuffering,
     currentTrack,
     isPlayerExpanded,
-    volume,
     queue,
     queueIndex,
     shuffle,
     repeat,
-    outputDevices,
-    selectedDevice,
     togglePlay,
     togglePlayerExpansion,
-    setVolume,
     seekTo,
     skipNext,
     skipPrev,
     setShuffle,
     setRepeat,
     removeFromQueue,
-    playTrack,
     setQueue,
-    setOutputDevice,
-    enumerateDevices,
     isTrackLiked,
     toggleLike,
+    trackTheme,
   } = usePlayer();
 
   const { currentTime, duration } = usePlayerProgress();
 
   const [showQueue, setShowQueue] = useState(false);
 
-  const closeQueue = useCallback(() => setShowQueue(false), []);
-
-  // Use a single history entry for the entire expanded player state (including queue)
-  // This is MUCH more stable than fighting between two hooks.
   useOverlayHistory(isPlayerExpanded, () => {
     if (showQueue) {
       setShowQueue(false);
@@ -69,11 +56,9 @@ export const MobilePlayerDrawer: React.FC = () => {
     }
   });
 
-  if (!currentTrack) return null;
+  if (!currentTrack || !isPlayerExpanded) return null;
   
   const isLiked = isTrackLiked(currentTrack.id);
-  if (!isPlayerExpanded) return null;
-
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -90,7 +75,7 @@ export const MobilePlayerDrawer: React.FC = () => {
     setRepeat(getNextRepeatMode(repeat));
   };
 
-  const handleQueueTrackClick = (track: Track, index: number) => {
+  const handleQueueTrackClick = (index: number) => {
     setQueue(queue, index);
     setShowQueue(false);
   };
@@ -99,25 +84,24 @@ export const MobilePlayerDrawer: React.FC = () => {
   const previousQueue = queue.slice(0, queueIndex);
   const upcomingQueue = queue.slice(queueIndex + 1);
 
-  return (
-    <div className="fixed inset-0 z-50 md:hidden">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-primary/98 backdrop-blur-sm"
-        onClick={togglePlayerExpansion}
-      />
+  const containerStyle = {
+    backgroundColor: trackTheme.primary,
+    color: trackTheme.isDark ? '#FFFFFF' : '#0A192F',
+  };
 
+  return (
+    <div className="fixed inset-0 z-50 md:hidden overflow-hidden transition-colors duration-700 ease-in-out" style={containerStyle}>
       {/* Drawer Content */}
       <div className="relative h-full flex flex-col animate-slide-up pt-[env(safe-area-inset-top,0px)]">
         {/* Header */}
         <div className="flex items-center justify-between px-4 pt-4 pb-2">
           <button
             onClick={() => showQueue ? setShowQueue(false) : togglePlayerExpansion()}
-            className="p-2 text-text-secondary hover:text-text-primary transition-colors"
+            className="p-2 text-current opacity-70 hover:opacity-100 transition-opacity"
           >
             {showQueue ? <ChevronLeft size={28} /> : <ChevronDown size={28} />}
           </button>
-          <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+          <span className="text-xs font-black uppercase tracking-widest opacity-50">
             {showQueue ? 'Queue' : 'Now Playing'}
           </span>
           <div className="p-2 w-10" />
@@ -125,33 +109,32 @@ export const MobilePlayerDrawer: React.FC = () => {
 
         {showQueue ? (
           /* ===== Queue View ===== */
-          <div className="flex-1 overflow-y-auto px-4 pb-4">
+          <div className="flex-1 overflow-y-auto px-4 pb-4 custom-scrollbar">
             {/* Recently Played */}
             {previousQueue.length > 0 && (
-              <div className="mb-6">
-                <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2 px-2">
+              <div className="mb-8">
+                <h3 className="text-xs font-black uppercase tracking-widest mb-4 px-2 opacity-40">
                   Recently Played
                 </h3>
                 <div className="space-y-1 opacity-60">
                   {previousQueue.map((track, idx) => (
                     <div
                       key={`prev-${track.id}-${idx}`}
-                      className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-surface-hover transition-colors group"
-                      onClick={() => handleQueueTrackClick(track, idx)}
+                      className="flex items-center gap-4 px-3 py-2.5 rounded-2xl hover:bg-white/5 transition-colors"
+                      onClick={() => handleQueueTrackClick(idx)}
                     >
-                      <div className="w-10 h-10 flex-shrink-0">
+                      <div className="w-12 h-12 flex-shrink-0">
                         <TrackCover
                           coverUrl={track.coverUrl}
                           coverBlob={track.coverBlob}
                           alt={track.title}
-                          className="w-full h-full rounded object-cover grayscale-[50%]"
+                          className="w-full h-full rounded-xl object-cover shadow-lg"
                         />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-text-primary text-sm font-medium truncate">{track.title}</p>
-                        <p className="text-text-secondary text-xs truncate">{track.artist}</p>
+                        <p className="font-bold text-sm truncate">{track.title}</p>
+                        <p className="text-[10px] uppercase font-black tracking-wider opacity-50 truncate">{track.artist}</p>
                       </div>
-                      <span className="text-text-secondary text-xs flex-shrink-0">{track.duration}</span>
                     </div>
                   ))}
                 </div>
@@ -159,43 +142,43 @@ export const MobilePlayerDrawer: React.FC = () => {
             )}
 
             {/* Now Playing */}
-            <div className="mb-6">
-              <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2 px-2">
+            <div className="mb-8">
+              <h3 className="text-xs font-black uppercase tracking-widest mb-4 px-2 opacity-40">
                 Now Playing
               </h3>
-              <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-accent/10 border border-accent/20">
+              <div className="flex items-center gap-4 px-4 py-4 rounded-3xl bg-white/10 shadow-xl border border-white/5">
                 <TrackCover
                   coverUrl={currentTrack.coverUrl}
                   coverBlob={currentTrack.coverBlob}
                   alt={currentTrack.title}
-                  className="w-12 h-12 rounded object-cover"
+                  className="w-14 h-14 rounded-2xl object-cover shadow-2xl"
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="text-accent font-medium text-sm truncate">{currentTrack.title}</p>
-                  <p className="text-text-secondary text-xs truncate">{currentTrack.artist}</p>
+                  <p className="font-black text-base truncate">{currentTrack.title}</p>
+                  <p className="text-xs uppercase font-black tracking-widest opacity-60 truncate">{currentTrack.artist}</p>
                 </div>
-                {isBuffering ? (
-                  <Loader2 size={16} className="animate-spin text-accent" />
-                ) : isPlaying ? (
-                  <div className="flex items-center gap-0.5">
-                    <div className="w-1 h-3 bg-accent rounded-full animate-pulse" />
-                    <div className="w-1 h-4 bg-accent rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
-                    <div className="w-1 h-2 bg-accent rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+                {isPlaying && (
+                  <div className="flex items-center gap-1 pr-2">
+                    <div className="w-1 h-4 bg-current rounded-full animate-music-bar" />
+                    <div className="w-1 h-6 bg-current rounded-full animate-music-bar" style={{ animationDelay: '150ms' }} />
+                    <div className="w-1 h-3 bg-current rounded-full animate-music-bar" style={{ animationDelay: '300ms' }} />
                   </div>
-                ) : null}
+                )}
               </div>
             </div>
 
             {/* Upcoming */}
-            <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2 px-2">
-              Next Up ({upcomingQueue.length})
-            </h3>
+            <div className="flex items-center justify-between mb-4 px-2">
+              <h3 className="text-xs font-black uppercase tracking-widest opacity-40">
+                Next Up
+              </h3>
+              <span className="text-[10px] font-black opacity-30 uppercase tracking-tighter">Drag to reorder in queue menu</span>
+            </div>
 
             {upcomingQueue.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-text-secondary">
-                <Music2 size={40} className="mb-3 opacity-40" />
-                <p className="text-sm">Queue is empty</p>
-                <p className="text-xs mt-1">Sync your library to add tracks</p>
+              <div className="flex flex-col items-center justify-center py-16 opacity-30">
+                <Music2 size={48} className="mb-4" />
+                <p className="text-sm font-black uppercase tracking-widest">End of Queue</p>
               </div>
             ) : (
               <div className="space-y-1">
@@ -204,33 +187,31 @@ export const MobilePlayerDrawer: React.FC = () => {
                   return (
                     <div
                       key={`${track.id}-${actualIndex}`}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-surface-hover transition-colors group"
+                      className="flex items-center gap-4 px-3 py-3 rounded-2xl hover:bg-white/5 transition-all group"
                     >
-                      <GripVertical size={16} className="text-text-secondary/40 flex-shrink-0" />
                       <div
-                        className="w-10 h-10 flex-shrink-0 cursor-pointer"
-                        onClick={() => handleQueueTrackClick(track, actualIndex)}
+                        className="w-12 h-12 flex-shrink-0"
+                        onClick={() => handleQueueTrackClick(actualIndex)}
                       >
                         <TrackCover
                           coverUrl={track.coverUrl}
                           coverBlob={track.coverBlob}
                           alt={track.title}
-                          className="w-full h-full rounded object-cover"
+                          className="w-full h-full rounded-xl object-cover shadow-lg"
                         />
                       </div>
                       <div
-                        className="flex-1 min-w-0 cursor-pointer"
-                        onClick={() => handleQueueTrackClick(track, actualIndex)}
+                        className="flex-1 min-w-0"
+                        onClick={() => handleQueueTrackClick(actualIndex)}
                       >
-                        <p className="text-text-primary text-sm font-medium truncate">{track.title}</p>
-                        <p className="text-text-secondary text-xs truncate">{track.artist}</p>
+                        <p className="font-bold text-sm truncate">{track.title}</p>
+                        <p className="text-[10px] uppercase font-black tracking-wider opacity-50 truncate">{track.artist}</p>
                       </div>
-                      <span className="text-text-secondary text-xs flex-shrink-0">{track.duration}</span>
                       <button
                         onClick={() => removeFromQueue(actualIndex)}
-                        className="opacity-0 group-hover:opacity-100 p-1 text-text-secondary hover:text-text-primary transition-all flex-shrink-0"
+                        className="p-2 opacity-40 hover:opacity-100 transition-opacity"
                       >
-                        <X size={14} />
+                        <X size={18} />
                       </button>
                     </div>
                   );
@@ -242,121 +223,107 @@ export const MobilePlayerDrawer: React.FC = () => {
           /* ===== Player View ===== */
           <>
             {/* Album Art - Large */}
-            <div className="flex-1 flex items-center justify-center px-8">
-              <div className="relative w-full max-w-sm">
+            <div className="flex-1 flex items-center justify-center px-8 py-4">
+              <div className="relative w-full aspect-square max-w-[85vw] max-h-[85vw]">
                 <TrackCover
                   coverUrl={currentTrack.coverUrl}
                   coverBlob={currentTrack.coverBlob}
                   alt={currentTrack.title}
-                  className="w-full aspect-square rounded-lg shadow-2xl object-cover"
+                  className="w-full h-full rounded-[2.5rem] shadow-2xl object-cover"
                 />
                 {isBuffering && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg">
-                    <Loader2 size={48} className="animate-spin text-accent" />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-[2.5rem] backdrop-blur-sm">
+                    <Loader2 size={64} className="animate-spin text-white" />
                   </div>
                 )}
               </div>
             </div>
 
             {/* Track Info */}
-            <div className="px-6 py-4 flex items-center justify-between">
+            <div className="px-8 pt-4 flex items-start justify-between gap-4">
               <div className="min-w-0 flex-1">
-                <h2 className="text-2xl font-bold text-text-primary truncate">
+                <h2 className="text-3xl font-black tracking-tighter truncate leading-tight">
                   {currentTrack.title}
                 </h2>
-                <p className="text-text-secondary text-lg truncate">{currentTrack.artist}</p>
+                <p className="text-xl font-bold opacity-60 truncate mt-1">{currentTrack.artist}</p>
               </div>
               <button
                 onClick={() => toggleLike(currentTrack.id, currentTrack.title)}
-                className={`p-2 transition-colors ${isLiked ? 'text-accent' : 'text-text-secondary hover:text-accent'}`}
+                className="p-2 mt-1"
               >
-                <Heart size={24} fill={isLiked ? 'currentColor' : 'none'} />
+                <Heart size={32} fill={isLiked ? 'currentColor' : 'none'} className={isLiked ? 'text-accent' : 'opacity-40'} />
               </button>
             </div>
 
             {/* Progress Bar */}
-            <div className="px-6 mb-4">
+            <div className="px-8 mt-8 mb-6">
               <div
-                className="h-1.5 bg-surface-hover rounded-full cursor-pointer"
+                className="h-1.5 bg-white/10 rounded-full relative group"
                 onClick={handleSeek}
                 onTouchMove={handleTouchSeek}
               >
                 <div
-                  className="h-full bg-accent rounded-full relative"
+                  className="h-full bg-white/60 rounded-full relative"
                   style={{ width: `${progressPercent}%` }}
                 >
-                  <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-text-primary rounded-full shadow-md" />
+                  <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-2xl" />
                 </div>
               </div>
-              <div className="flex justify-between mt-2 text-xs text-text-secondary">
+              <div className="flex justify-between mt-3 text-[10px] font-black uppercase tracking-widest opacity-40">
                 <span>{formatTime(currentTime)}</span>
                 <span>{formatTime(duration)}</span>
               </div>
             </div>
 
             {/* Playback Controls */}
-            <div className="flex items-center justify-between px-6 mb-6">
+            <div className="flex items-center justify-between px-8 mb-10">
               <button
                 onClick={() => setShuffle(!shuffle)}
-                className={`transition-colors ${shuffle ? 'text-accent' : 'text-text-secondary hover:text-text-primary'}`}
+                className={`transition-all ${shuffle ? 'text-accent scale-110' : 'opacity-40 hover:opacity-100'}`}
               >
                 <Shuffle size={24} />
               </button>
-              <button
-                onClick={skipPrev}
-                className="text-text-primary hover:text-accent transition-colors"
-              >
-                <SkipBack size={32} className="fill-current" />
-              </button>
-              <button
-                onClick={togglePlay}
-                className="w-16 h-16 rounded-full bg-accent flex items-center justify-center hover:scale-105 transition-transform shadow-lg"
-              >
-                {isBuffering ? (
-                  <Loader2 size={32} className="animate-spin text-primary" />
-                ) : isPlaying ? (
-                  <Pause size={32} className="fill-primary text-primary" />
-                ) : (
-                  <Play size={32} className="fill-primary text-primary ml-1" />
-                )}
-              </button>
-              <button
-                onClick={skipNext}
-                className="text-text-primary hover:text-accent transition-colors"
-              >
-                <SkipForward size={32} className="fill-current" />
-              </button>
+              
+              <div className="flex items-center gap-8">
+                <button onClick={skipPrev} className="hover:scale-110 transition-transform active:scale-90">
+                  <SkipBack size={40} className="fill-current" />
+                </button>
+                <button
+                  onClick={togglePlay}
+                  className="w-20 h-20 rounded-full bg-white text-[#0A192F] flex items-center justify-center hover:scale-105 active:scale-90 transition-all shadow-2xl"
+                >
+                  {isBuffering ? (
+                    <Loader2 size={36} className="animate-spin" />
+                  ) : isPlaying ? (
+                    <Pause size={36} className="fill-current" />
+                  ) : (
+                    <Play size={36} className="fill-current ml-1" />
+                  )}
+                </button>
+                <button onClick={skipNext} className="hover:scale-110 transition-transform active:scale-90">
+                  <SkipForward size={40} className="fill-current" />
+                </button>
+              </div>
+
               <button
                 onClick={cycleRepeat}
-                className={`transition-colors ${repeat !== 'off' ? 'text-accent' : 'text-text-secondary hover:text-text-primary'}`}
+                className={`transition-all ${repeat !== 'off' ? 'text-accent scale-110' : 'opacity-40 hover:opacity-100'}`}
               >
                 {repeat === 'one' ? <Repeat1 size={24} /> : <Repeat size={24} />}
               </button>
             </div>
 
-            <div className="flex items-center justify-between px-6 pb-[calc(2rem+env(safe-area-inset-bottom,0px))]">
-              {/* Output Device Menu (Drawer) */}
-              <DeviceSelector
-                outputDevices={outputDevices}
-                selectedDevice={selectedDevice}
-                onSelect={setOutputDevice}
-                onRefresh={enumerateDevices}
-                iconSize={28}
-                showClose
-                position="bottom-left"
-              />
-              <VolumeSlider
-                volume={volume}
-                onVolumeChange={setVolume}
-                iconSize={20}
-                widthClass="flex-1 max-w-xs mx-4"
-              />
+            {/* Footer Actions */}
+            <div className="flex items-center justify-between px-8 pb-[calc(2rem+env(safe-area-inset-bottom,0px))]">
+              <div className="w-10" /> {/* Spacer */}
               <button
                 onClick={() => setShowQueue(true)}
-                className={`transition-colors ${showQueue ? 'text-accent' : 'text-text-secondary hover:text-text-primary'}`}
+                className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/10 hover:bg-white/20 transition-colors shadow-lg border border-white/5"
               >
-                <ListMusic size={24} />
+                <ListMusic size={20} />
+                <span className="text-xs font-black uppercase tracking-widest">Queue</span>
               </button>
+              <div className="w-10" /> {/* Spacer */}
             </div>
           </>
         )}

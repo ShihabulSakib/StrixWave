@@ -41,6 +41,11 @@ export const VolumeSlider: React.FC<VolumeSliderProps> = ({
     onVolumeChange(volume === 0 ? 70 : 0);
   }, [volume, onVolumeChange]);
 
+  // Hidden on mobile since browsers on Android/iOS do not support programmatic system volume sync
+  if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+    return null;
+  }
+
   const VolumeIcon = volume === 0 ? VolumeX : volume < 50 ? Volume1 : Volume2;
 
   return (
@@ -60,7 +65,7 @@ export const VolumeSlider: React.FC<VolumeSliderProps> = ({
         aria-valuemax={100}
         aria-valuenow={Math.round(volume)}
         tabIndex={0}
-        className="flex-1 h-1 bg-surface-hover rounded-full cursor-pointer"
+        className="flex-1 h-1 bg-white/10 rounded-full cursor-pointer"
       >
         <div
           className="h-full bg-text-secondary rounded-full group-hover:bg-accent transition-colors"

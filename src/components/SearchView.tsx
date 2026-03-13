@@ -6,6 +6,82 @@ import { usePlayer, type Track } from '../context/PlayerContext';
 import { usePlaylists } from '../context/PlaylistContext';
 import { getAllTracks, getTracksByIds } from '../services/db';
 
+// --- Standalone PlaylistCover Component (Moved outside to prevent flickering) ---
+const PlaylistCover = React.memo(({ playlist }: { playlist: any }) => {
+  const isLikedSongs = playlist.id === 'liked-songs';
+  const [firstTrackArt, setFirstTrackArt] = useState<{ url?: string, blob?: Blob } | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (isLikedSongs || playlist.trackIds.length === 0) {
+      setIsLoaded(true);
+      return;
+    }
+    
+    const loadFirstArt = async () => {
+      try {
+        const tracks = await getTracksByIds([playlist.trackIds[0]]);
+        if (tracks.length > 0) {
+          setFirstTrackArt({ url: tracks[0].coverUrl, blob: tracks[0].coverBlob });
+        }
+      } catch (err) {
+        console.error('[PlaylistCover] Failed to load art:', err);
+      } finally {
+        setIsLoaded(true);
+      }
+    };
+    loadFirstArt();
+  }, [playlist.id, playlist.trackIds, isLikedSongs]);
+
+  // Gradient based on name (stable)
+  const gradientStyle = useMemo(() => {
+    let hash = 0;
+    for (let i = 0; i < playlist.name.length; i++) {
+      hash = playlist.name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const h1 = Math.abs(hash % 360);
+    const h2 = (h1 + 60) % 360;
+    return {
+      background: `linear-gradient(135deg, hsl(${h1}, 60%, 50%) 0%, hsl(${h2}, 70%, 30%) 100%)`,
+    };
+  }, [playlist.name]);
+
+  const hasArt = firstTrackArt?.url || firstTrackArt?.blob;
+
+  return (
+    <div className={`aspect-square w-full rounded-lg mb-4 overflow-hidden shadow-lg flex items-center justify-center relative transition-transform group-hover:scale-105 duration-500 ${
+      isLikedSongs ? 'bg-gradient-to-br from-indigo-600 to-purple-400' : ''
+    }`} style={!isLikedSongs && !hasArt ? gradientStyle : {}}>
+      
+      {!isLoaded ? (
+        <div className="absolute inset-0 bg-white/5 animate-pulse" />
+      ) : isLikedSongs ? (
+        <Heart size={40} className="text-white drop-shadow-md" fill="currentColor" />
+      ) : hasArt ? (
+        <TrackCover 
+          coverUrl={firstTrackArt?.url} 
+          coverBlob={firstTrackArt?.blob} 
+          alt={playlist.name} 
+          className="w-full h-full object-cover" 
+        />
+      ) : (
+        <div className="flex flex-col items-center gap-2 opacity-60">
+          <Music2 size={40} className="text-white/80" />
+        </div>
+      )}
+
+      {/* Play Overlay */}
+      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+        <div className="w-12 h-12 rounded-full bg-accent shadow-xl flex items-center justify-center scale-90 group-hover:scale-100 transition-transform duration-300">
+          <Play size={20} className="fill-primary text-primary ml-1" />
+        </div>
+      </div>
+    </div>
+  );
+});
+
+PlaylistCover.displayName = 'PlaylistCover';
+
 export const SearchView: React.FC = () => {
   const { searchQuery, setSearchQuery, currentTrack, isPlaying, setQueue } = usePlayer();
   const { allPlaylists } = usePlaylists();
@@ -90,66 +166,6 @@ export const SearchView: React.FC = () => {
   // Helper to find which playlists a track belongs to
   const getTrackPlaylists = (trackId: string) => {
     return allPlaylists.filter(p => p.trackIds.includes(trackId));
-  };
-
-  // Helper to get playlist cover component
-  const PlaylistCover = ({ playlist }: { playlist: any }) => {
-    const isLikedSongs = playlist.id === 'liked-songs';
-    const [firstTrackArt, setFirstTrackArt] = useState<{ url?: string, blob?: Blob } | null>(null);
-
-    useEffect(() => {
-      if (isLikedSongs || playlist.trackIds.length === 0) return;
-      
-      const loadFirstArt = async () => {
-        const tracks = await getTracksByIds([playlist.trackIds[0]]);
-        if (tracks.length > 0) {
-          setFirstTrackArt({ url: tracks[0].coverUrl, blob: tracks[0].coverBlob });
-        }
-      };
-      loadFirstArt();
-    }, [playlist.id, playlist.trackIds, isLikedSongs]);
-
-    // Gradient based on name
-    const gradientStyle = useMemo(() => {
-      let hash = 0;
-      for (let i = 0; i < playlist.name.length; i++) {
-        hash = playlist.name.charCodeAt(i) + ((hash << 5) - hash);
-      }
-      const h1 = Math.abs(hash % 360);
-      const h2 = (h1 + 60) % 360;
-      return {
-        background: `linear-gradient(135deg, hsl(${h1}, 60%, 50%) 0%, hsl(${h2}, 70%, 30%) 100%)`,
-      };
-    }, [playlist.name]);
-
-    return (
-      <div className={`aspect-square w-full rounded-lg mb-4 overflow-hidden shadow-lg flex items-center justify-center relative transition-transform group-hover:scale-105 duration-500 ${
-        isLikedSongs ? 'bg-gradient-to-br from-indigo-600 to-purple-400' : ''
-      }`} style={!isLikedSongs && !firstTrackArt?.url && !firstTrackArt?.blob ? gradientStyle : {}}>
-        
-        {isLikedSongs ? (
-          <Heart size={40} className="text-white drop-shadow-md" fill="currentColor" />
-        ) : firstTrackArt ? (
-          <TrackCover 
-            coverUrl={firstTrackArt.url} 
-            coverBlob={firstTrackArt.blob} 
-            alt={playlist.name} 
-            className="w-full h-full object-cover" 
-          />
-        ) : (
-          <div className="flex flex-col items-center gap-2 opacity-60">
-            <Music2 size={40} className="text-white/80" />
-          </div>
-        )}
-
-        {/* Play Overlay */}
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-          <div className="w-12 h-12 rounded-full bg-accent shadow-xl flex items-center justify-center scale-90 group-hover:scale-100 transition-transform duration-300">
-            <Play size={20} className="fill-primary text-primary ml-1" />
-          </div>
-        </div>
-      </div>
-    );
   };
 
   return (

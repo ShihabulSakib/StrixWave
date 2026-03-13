@@ -16,6 +16,9 @@ export default defineConfig({
       includeProps: true,
     })
   ],
+  server: {
+    allowedHosts: true,
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

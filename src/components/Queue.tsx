@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { usePlayer, type Track } from '../context/PlayerContext';
-import { X, Play, Loader2, Music2 } from 'lucide-react';
+import { X, Play, Loader2, Music2, GripVertical } from 'lucide-react';
 import TrackCover from './TrackCover';
 import { useOverlayHistory } from '../hooks/useHistoryHook';
 
@@ -18,6 +18,10 @@ export const Queue: React.FC = () => {
     reorderQueue,
   } = usePlayer();
 
+  // --- Touch Reordering Logic (Mobile) ---
+  const touchStartIndex = useRef<number>(-1);
+  const touchCurrentIndex = useRef<number>(-1);
+
   useOverlayHistory(isQueueOpen, toggleQueue);
 
   if (!isQueueOpen) return null;
@@ -29,43 +33,79 @@ export const Queue: React.FC = () => {
     setQueue(queue, index);
   };
 
-  // --- Drag and Drop Logic ---
+  // --- Drag and Drop Logic (Mouse) ---
   const handleDragStart = (e: React.DragEvent, index: number) => {
     e.dataTransfer.setData('text/plain', index.toString());
     e.dataTransfer.effectAllowed = 'move';
     
     // Add visual feedback
-    const target = e.currentTarget as HTMLElement;
-    target.classList.add('opacity-40');
+    const row = (e.currentTarget as HTMLElement).closest('[data-queue-row]') as HTMLElement;
+    if (row) row.classList.add('opacity-40');
   };
 
   const handleDragEnd = (e: React.DragEvent) => {
-    const target = e.currentTarget as HTMLElement;
-    target.classList.remove('opacity-40');
+    const row = (e.currentTarget as HTMLElement).closest('[data-queue-row]') as HTMLElement;
+    if (row) row.classList.remove('opacity-40');
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     
-    const target = e.currentTarget as HTMLElement;
-    target.classList.add('bg-accent/5');
+    const row = (e.currentTarget as HTMLElement).closest('[data-queue-row]') as HTMLElement;
+    if (row) row.classList.add('bg-accent/5');
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
-    const target = e.currentTarget as HTMLElement;
-    target.classList.remove('bg-accent/5');
+    const row = (e.currentTarget as HTMLElement).closest('[data-queue-row]') as HTMLElement;
+    if (row) row.classList.remove('bg-accent/5');
   };
 
   const handleDrop = (e: React.DragEvent, toIndex: number) => {
     e.preventDefault();
-    const target = e.currentTarget as HTMLElement;
-    target.classList.remove('bg-accent/5');
+    const row = (e.currentTarget as HTMLElement).closest('[data-queue-row]') as HTMLElement;
+    if (row) row.classList.remove('bg-accent/5');
     
     const fromIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
     if (fromIndex !== toIndex) {
       reorderQueue(fromIndex, toIndex);
     }
+  };
+
+  // --- Touch Reordering Logic (Mobile) ---
+  const handleTouchStart = (e: React.TouchEvent, index: number) => {
+    touchStartIndex.current = index;
+    touchCurrentIndex.current = index;
+    
+    const row = (e.currentTarget as HTMLElement).closest('[data-queue-row]') as HTMLElement;
+    if (row) row.classList.add('bg-accent/20', 'scale-[1.02]', 'shadow-2xl', 'z-10');
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (touchStartIndex.current !== -1) {
+      const touchY = e.touches[0].clientY;
+      const element = document.elementFromPoint(e.touches[0].clientX, touchY);
+      const row = element?.closest('[data-queue-index]') as HTMLElement;
+      
+      if (row) {
+        const newIdx = parseInt(row.getAttribute('data-queue-index') || '-1', 10);
+        if (newIdx !== -1 && newIdx !== touchCurrentIndex.current) {
+          touchCurrentIndex.current = newIdx;
+        }
+      }
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const row = (e.currentTarget as HTMLElement).closest('[data-queue-row]') as HTMLElement;
+    if (row) row.classList.remove('bg-accent/20', 'scale-[1.02]', 'shadow-2xl', 'z-10');
+
+    if (touchStartIndex.current !== -1 && touchCurrentIndex.current !== -1 && touchStartIndex.current !== touchCurrentIndex.current) {
+      reorderQueue(touchStartIndex.current, touchCurrentIndex.current);
+    }
+    
+    touchStartIndex.current = -1;
+    touchCurrentIndex.current = -1;
   };
 
   return (
@@ -154,7 +194,7 @@ export const Queue: React.FC = () => {
               Up Next
             </h3>
             <span className="text-[9px] font-bold text-text-secondary opacity-40 uppercase tracking-tighter">
-              Drag to reorder
+              Hold handle to reorder
             </span>
           </div>
           
@@ -165,16 +205,28 @@ export const Queue: React.FC = () => {
                 return (
                   <div
                     key={`${track.id}-${actualIndex}`}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, actualIndex)}
-                    onDragEnd={handleDragEnd}
+                    data-queue-row
+                    data-queue-index={actualIndex}
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, actualIndex)}
-                    className="flex items-center gap-3 p-2 rounded-md hover:bg-surface-hover group cursor-move transition-all border border-transparent hover:border-white/5 active:scale-[0.98]"
+                    className="flex items-center gap-2 p-2 rounded-md hover:bg-surface-hover group transition-all border border-transparent hover:border-white/5 active:scale-[0.98]"
                   >
+                    {/* Dedicated Drag Handle */}
                     <div
-                      className="w-10 h-10 flex-shrink-0"
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, actualIndex)}
+                      onDragEnd={handleDragEnd}
+                      onTouchStart={(e) => handleTouchStart(e, actualIndex)}
+                      onTouchMove={handleTouchMove}
+                      onTouchEnd={handleTouchEnd}
+                      className="p-1 text-text-secondary opacity-20 group-hover:opacity-100 cursor-grab active:cursor-grabbing shrink-0"
+                    >
+                      <GripVertical size={16} />
+                    </div>
+
+                    <div
+                      className="w-10 h-10 flex-shrink-0 cursor-pointer"
                       onClick={() => handleTrackClick(actualIndex)}
                     >
                       <TrackCover
@@ -185,7 +237,7 @@ export const Queue: React.FC = () => {
                       />
                     </div>
                     <div
-                      className="min-w-0 flex-1"
+                      className="min-w-0 flex-1 cursor-pointer"
                       onClick={() => handleTrackClick(actualIndex)}
                     >
                       <p className="text-text-primary text-sm font-medium truncate group-hover:text-accent">
