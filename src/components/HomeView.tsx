@@ -35,8 +35,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
             providerPath: t.providerPath,
           }));
           
-          // Shuffle a bit for "discovery" sections
-          setLibraryTracks(mapped.sort(() => 0.5 - Math.random()));
+          setLibraryTracks(mapped);
         } else {
           setLibraryTracks([]);
         }
@@ -52,11 +51,15 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
     return () => window.removeEventListener('library-synced', loadLibrary);
   }, []);
 
-  const recentlyAdded = [...libraryTracks].sort((a, b) => 
-    new Date(b.addedDate).getTime() - new Date(a.addedDate).getTime()
-  ).slice(0, 8);
+  const recentlyAdded = useMemo(() => 
+    [...libraryTracks].sort((a, b) => 
+      new Date(b.addedDate).getTime() - new Date(a.addedDate).getTime()
+    ).slice(0, 10),
+  [libraryTracks]);
   
-  const randomMix = [...libraryTracks].slice(0, 5);
+  const shuffleMix = useMemo(() => 
+    [...libraryTracks].sort(() => Math.random() - 0.5).slice(0, 10),
+  [libraryTracks]);
 
   // Memoize greeting to prevent recalculation on every render
   const greeting = useMemo(() => {
@@ -68,90 +71,115 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigate }) => {
   }, []);
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar">
+    <div className="flex-1 overflow-y-auto custom-scrollbar bg-gradient-to-b from-white/[0.03] to-transparent">
       <TopNav />
 
-      <div className="px-6 pb-24 md:pb-8">
-        {/* Hero Section */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-text-primary mb-6">{greeting}</h1>
+      <div className="px-6 pb-32 pt-4">
+        {/* Header Section */}
+        <header className="mb-12">
+          <h1 className="text-4xl md:text-6xl font-black text-text-primary tracking-tighter mb-2 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {greeting}
+          </h1>
+          <p className="text-text-secondary font-medium text-lg opacity-60 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-100">
+            Your personal auditory space, refined.
+          </p>
+        </header>
 
-          {/* Recently Played Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            {recentlyAdded.length > 0 ? recentlyAdded.slice(0, 6).map((item, idx) => (
-              <div
-                key={item.id}
-                onClick={() => {
-                  setQueue(recentlyAdded, idx);
-                }}
-                className="group bg-surface/40 hover:bg-surface-hover/60 rounded-lg overflow-hidden flex items-center gap-4 transition-all duration-300 cursor-pointer border border-white/5 backdrop-blur-sm"
-              >
-                <div className="relative w-16 h-16 flex-shrink-0">
-                  <TrackCover
-                    coverUrl={item.coverUrl}
-                    coverBlob={item.coverBlob}
-                    alt={item.title}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div className="flex-1 min-w-0 pr-3">
-                  <p className="text-text-primary font-bold text-sm truncate group-hover:text-accent transition-colors">
-                    {item.title}
-                  </p>
-                  <p className="text-text-secondary text-[10px] truncate uppercase tracking-wider font-semibold opacity-60">
-                    {item.artist}
-                  </p>
-                </div>
+        {libraryTracks.length > 0 ? (
+          <div className="space-y-16">
+            {/* Quick Mix Section (The 'visionary' grid) */}
+            <section>
+              <h2 className="text-xl font-bold text-text-primary mb-6 flex items-center gap-2 px-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-accent" />
+                Quick Discovery
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {recentlyAdded.slice(0, 6).map((item, idx) => (
+                  <div
+                    key={item.id}
+                    onClick={() => setQueue(recentlyAdded, idx)}
+                    className="group relative bg-white/[0.02] hover:bg-white/[0.07] border border-white/5 rounded-2xl overflow-hidden flex items-center transition-all duration-500 cursor-pointer shadow-sm hover:shadow-2xl hover:-translate-y-0.5"
+                  >
+                    <div className="w-20 h-20 flex-shrink-0">
+                      <TrackCover
+                        coverUrl={item.coverUrl}
+                        coverBlob={item.coverBlob}
+                        alt={item.title}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0 px-4">
+                      <p className="text-text-primary font-bold text-sm truncate group-hover:text-accent transition-colors">
+                        {item.title}
+                      </p>
+                      <p className="text-text-secondary text-[10px] truncate uppercase tracking-widest font-bold opacity-40 mt-0.5">
+                        {item.artist}
+                      </p>
+                    </div>
+                    <div className="pr-4 opacity-0 group-hover:opacity-100 transition-opacity duration-500 translate-x-2 group-hover:translate-x-0">
+                      <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center shadow-lg">
+                        <Play size={14} className="fill-primary text-primary ml-0.5" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            )) : (
-              /* ===== Empty State with CTA ===== */
-              <div className="col-span-full flex flex-col items-center py-12 text-center">
-                <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mb-6">
-                  <Cloud size={36} className="text-accent" />
-                </div>
-                <h3 className="text-xl font-bold text-text-primary mb-2">Welcome to Strixwave</h3>
-                <p className="text-text-secondary text-sm max-w-sm mb-6">
-                  Connect your cloud storage accounts to sync and stream your personal music library.
-                </p>
-                <button
-                  onClick={() => setShowConnectionManager(true)}
-                  className="flex items-center gap-3 px-8 py-4 rounded-lg bg-accent hover:bg-accent-hover text-primary font-bold transition-all hover:scale-105 shadow-lg shadow-accent/20"
+            </section>
+
+            {/* Jump Back In Section */}
+            <section>
+              <div className="flex items-center justify-between mb-6 px-1">
+                <h2 className="text-2xl font-black text-text-primary tracking-tight">
+                  Jump Back In
+                </h2>
+                <button 
+                  className="text-xs font-bold text-accent uppercase tracking-widest hover:opacity-80 transition-opacity"
+                  onClick={() => onNavigate?.('library')}
                 >
-                  <Plus size={22} />
-                  <span>Connect Cloud Source</span>
+                  View Library
                 </button>
               </div>
-            )}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                {shuffleMix.map((item, idx) => (
+                  <AlbumCard
+                    key={item.id}
+                    title={item.title}
+                    subtitle={item.artist}
+                    coverUrl={item.coverUrl || ''}
+                    coverBlob={item.coverBlob}
+                    showDescription={false}
+                    onClick={() => setQueue(shuffleMix, idx)}
+                    onPlay={(e) => {
+                      e.stopPropagation();
+                      setQueue(shuffleMix, idx);
+                    }}
+                  />
+                ))}
+              </div>
+            </section>
           </div>
-        </div>
-
-        {/* Made For You Section */}
-        {randomMix.length > 0 && (
-          <section className="mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold text-text-primary hover:underline cursor-pointer">
-                Jump Back In
-              </h2>
+        ) : (
+          /* ===== Empty State with CTA ===== */
+          <div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in zoom-in-95 duration-1000">
+            <div className="relative mb-10">
+              <div className="absolute inset-0 bg-accent/20 blur-3xl rounded-full" />
+              <div className="relative w-32 h-32 bg-white/[0.03] border border-white/10 rounded-[2.5rem] flex items-center justify-center rotate-6 shadow-2xl backdrop-blur-xl">
+                <Music2 size={56} className="text-accent -rotate-6" />
+              </div>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-              {randomMix.map((item, idx) => (
-                <AlbumCard
-                  key={item.id}
-                  title={item.title}
-                  subtitle={item.artist}
-                  coverUrl={item.coverUrl || ''}
-                  coverBlob={item.coverBlob}
-                  showDescription={false}
-                  hidePlayButton={true}
-                  onClick={() => setQueue(randomMix, idx)}
-                  onPlay={(e) => {
-                    e.stopPropagation();
-                    setQueue(randomMix, idx);
-                  }}
-                />
-              ))}
-            </div>
-          </section>
+            <h3 className="text-3xl font-black text-text-primary mb-4 tracking-tighter">Start Your Journey</h3>
+            <p className="text-text-secondary font-medium max-w-md mb-10 leading-relaxed opacity-70 px-4">
+              Connect your cloud architecture to orchestrate your personal auditory library. Supporting Google Drive and Dropbox.
+            </p>
+            <button
+              onClick={() => setShowConnectionManager(true)}
+              className="group relative flex items-center gap-4 px-10 py-5 rounded-2xl bg-accent text-primary font-black transition-all hover:scale-105 active:scale-95 shadow-2xl shadow-accent/20 overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
+              <Cloud size={24} className="relative z-10" />
+              <span className="relative z-10 text-lg">Initialize Sources</span>
+            </button>
+          </div>
         )}
       </div>
 

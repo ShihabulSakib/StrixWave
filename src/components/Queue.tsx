@@ -15,6 +15,7 @@ export const Queue: React.FC = () => {
     isBuffering,
     setQueue,
     removeFromQueue,
+    reorderQueue,
   } = usePlayer();
 
   useOverlayHistory(isQueueOpen, toggleQueue);
@@ -28,8 +29,47 @@ export const Queue: React.FC = () => {
     setQueue(queue, index);
   };
 
+  // --- Drag and Drop Logic ---
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    e.dataTransfer.setData('text/plain', index.toString());
+    e.dataTransfer.effectAllowed = 'move';
+    
+    // Add visual feedback
+    const target = e.currentTarget as HTMLElement;
+    target.classList.add('opacity-40');
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    const target = e.currentTarget as HTMLElement;
+    target.classList.remove('opacity-40');
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    
+    const target = e.currentTarget as HTMLElement;
+    target.classList.add('bg-accent/5');
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    const target = e.currentTarget as HTMLElement;
+    target.classList.remove('bg-accent/5');
+  };
+
+  const handleDrop = (e: React.DragEvent, toIndex: number) => {
+    e.preventDefault();
+    const target = e.currentTarget as HTMLElement;
+    target.classList.remove('bg-accent/5');
+    
+    const fromIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    if (fromIndex !== toIndex) {
+      reorderQueue(fromIndex, toIndex);
+    }
+  };
+
   return (
-    <div className="fixed inset-y-0 right-0 w-80 bg-surface border-l border-divider shadow-2xl z-[55] flex flex-col transform transition-transform duration-300 ease-in-out">
+    <div className="fixed inset-y-0 right-0 w-full sm:w-80 bg-surface border-l border-divider shadow-2xl z-[55] flex flex-col transform transition-transform duration-300 ease-in-out animate-in slide-in-from-right">
       <div className="flex items-center justify-between px-4 py-4 border-b border-divider">
         <h2 className="text-lg font-bold text-text-primary">Queue</h2>
         <button
@@ -40,7 +80,7 @@ export const Queue: React.FC = () => {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
         {/* History */}
         {history.length > 0 && (
           <div>
@@ -58,7 +98,7 @@ export const Queue: React.FC = () => {
                     coverUrl={track.coverUrl}
                     coverBlob={track.coverBlob}
                     alt={track.title}
-                    className="w-10 h-10 rounded object-cover flex-shrink-0"
+                    className="w-10 h-10 rounded object-cover flex-shrink-0 shadow-sm"
                   />
                   <div className="min-w-0 flex-1">
                     <p className="text-text-primary text-sm font-medium truncate group-hover:text-accent">
@@ -78,7 +118,7 @@ export const Queue: React.FC = () => {
             <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
               Now Playing
             </h3>
-            <div className="flex items-center gap-3 p-2 rounded-md bg-accent/10 border border-accent/20">
+            <div className="flex items-center gap-3 p-2 rounded-xl bg-accent/10 border border-accent/20 shadow-inner">
               <div className="relative w-10 h-10 flex-shrink-0">
                 <TrackCover
                   coverUrl={currentTrack.coverUrl}
@@ -93,14 +133,14 @@ export const Queue: React.FC = () => {
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-accent text-sm font-medium truncate">{currentTrack.title}</p>
-                <p className="text-text-secondary text-xs truncate">{currentTrack.artist}</p>
+                <p className="text-accent text-sm font-bold truncate">{currentTrack.title}</p>
+                <p className="text-text-secondary text-xs truncate font-medium">{currentTrack.artist}</p>
               </div>
               {isPlaying && !isBuffering && (
-                <div className="flex items-center gap-0.5 justify-end w-8">
-                  <div className="w-1 h-3 bg-accent rounded-full animate-pulse" />
-                  <div className="w-1 h-4 bg-accent rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
-                  <div className="w-1 h-2 bg-accent rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+                <div className="flex items-center gap-0.5 justify-end w-8 pr-1">
+                  <div className="w-0.5 h-3 bg-accent rounded-full animate-music-bar" />
+                  <div className="w-0.5 h-4 bg-accent rounded-full animate-music-bar" style={{ animationDelay: '150ms' }} />
+                  <div className="w-0.5 h-2 bg-accent rounded-full animate-music-bar" style={{ animationDelay: '300ms' }} />
                 </div>
               )}
             </div>
@@ -109,9 +149,15 @@ export const Queue: React.FC = () => {
 
         {/* Up Next */}
         <div>
-          <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">
-            Up Next
-          </h3>
+          <div className="flex items-center justify-between mb-2 px-1">
+            <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+              Up Next
+            </h3>
+            <span className="text-[9px] font-bold text-text-secondary opacity-40 uppercase tracking-tighter">
+              Drag to reorder
+            </span>
+          </div>
+          
           {upNext.length > 0 ? (
             <div className="space-y-1">
               {upNext.map((track, idx) => {
@@ -119,21 +165,27 @@ export const Queue: React.FC = () => {
                 return (
                   <div
                     key={`${track.id}-${actualIndex}`}
-                    className="flex items-center gap-3 p-2 rounded-md hover:bg-surface-hover group"
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, actualIndex)}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, actualIndex)}
+                    className="flex items-center gap-3 p-2 rounded-md hover:bg-surface-hover group cursor-move transition-all border border-transparent hover:border-white/5 active:scale-[0.98]"
                   >
                     <div
-                      className="w-10 h-10 flex-shrink-0 cursor-pointer"
+                      className="w-10 h-10 flex-shrink-0"
                       onClick={() => handleTrackClick(actualIndex)}
                     >
                       <TrackCover
                         coverUrl={track.coverUrl}
                         coverBlob={track.coverBlob}
                         alt={track.title}
-                        className="w-full h-full rounded object-cover"
+                        className="w-full h-full rounded object-cover shadow-sm"
                       />
                     </div>
                     <div
-                      className="min-w-0 flex-1 cursor-pointer"
+                      className="min-w-0 flex-1"
                       onClick={() => handleTrackClick(actualIndex)}
                     >
                       <p className="text-text-primary text-sm font-medium truncate group-hover:text-accent">
@@ -146,7 +198,7 @@ export const Queue: React.FC = () => {
                         e.stopPropagation();
                         removeFromQueue(actualIndex);
                       }}
-                      className="p-1 opacity-0 group-hover:opacity-100 hover:text-accent text-text-secondary"
+                      className="p-1 opacity-0 group-hover:opacity-100 hover:text-red-400 text-text-secondary transition-all"
                     >
                       <X size={14} />
                     </button>
@@ -155,9 +207,9 @@ export const Queue: React.FC = () => {
               })}
             </div>
           ) : (
-            <div className="text-center py-6 text-text-secondary">
-              <Music2 size={32} className="mx-auto mb-2 opacity-50" />
-              <p className="text-sm">Queue is empty</p>
+            <div className="text-center py-12 text-text-secondary bg-white/[0.02] rounded-2xl border border-dashed border-divider/50 mt-4">
+              <Music2 size={32} className="mx-auto mb-2 opacity-30" />
+              <p className="text-sm font-medium opacity-50">Queue is empty</p>
             </div>
           )}
         </div>

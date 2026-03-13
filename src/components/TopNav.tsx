@@ -24,17 +24,8 @@ export const TopNav: React.FC<TopNavProps> = ({ title }) => {
       <nav
         className="sticky top-0 z-50 flex items-center justify-between px-4 py-3 transition-all duration-300 bg-[#0A192F]/70 backdrop-blur-md border-b border-white/10"
       >
-        {/* Navigation & Mobile Menu */}
         <div className="flex items-center gap-2">
-          <button 
-            className="md:hidden w-8 h-8 flex items-center justify-center text-text-secondary hover:text-text-primary transition-all"
-            onClick={() => window.dispatchEvent(new CustomEvent('toggle-mobile-nav'))}
-          >
-            <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
-              <Menu size={18} />
-            </div>
-          </button>
-          {title && <h1 className="text-lg font-bold text-text-primary ml-2">{title}</h1>}
+          {title && <h1 className="text-lg font-bold text-text-primary">{title}</h1>}
         </div>
 
         {/* Right Section */}
