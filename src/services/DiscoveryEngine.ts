@@ -16,16 +16,6 @@ const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac
 // Metadata chunk size: 512KB
 const METADATA_CHUNK_SIZE = 512 * 1024;
 
-// Default cover images
-const DEFAULT_COVERS = [
-  'https://images.unsplash.com/photo-1614149162883-504ce4d13909?w=300&h=300&fit=crop',
-  'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&h=300&fit=crop',
-  'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&h=300&fit=crop',
-  'https://images.unsplash.com/photo-1511379938547-c1f69419868d?w=300&h=300&fit=crop',
-  'https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=300&h=300&fit=crop',
-  'https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=300&h=300&fit=crop',
-];
-
 export type ScanProgressCallback = (found: number, scanning: boolean) => void;
 
 class DiscoveryEngine {
@@ -73,96 +63,109 @@ class DiscoveryEngine {
   ): Promise<StoredTrack[]> {
     const storage = StorageManager.getInstance();
     const tracks: StoredTrack[] = [];
-    let coverIndex = 0;
+    
+    // For Google Drive, we need to manually recurse. For Dropbox, it's already recursive.
+    const foldersToScan: string[] = [rootPath || (providerId === 'google-drive' ? 'root' : '')];
+    const scannedFolders = new Set<string>();
 
     onProgress?.(0, true);
 
     try {
-      let result = await storage.listFolder(providerId, rootPath);
-      const allEntries = [...result.entries];
+      while (foldersToScan.length > 0) {
+        const currentFolder = foldersToScan.shift()!;
+        if (scannedFolders.has(currentFolder)) continue;
+        scannedFolders.add(currentFolder);
 
-      while (result.hasMore) {
-        result = await storage.listFolder(providerId, '', result.cursor);
-        allEntries.push(...result.entries);
-      }
-
-      const audioEntries = allEntries.filter((entry) => {
-        if (entry.isFolder) return false;
-        return AUDIO_EXTENSIONS.has(this.getExtension(entry.name));
-      });
-
-      console.log(`[DiscoveryEngine] Found ${audioEntries.length} audio files on ${providerId}. Extracting metadata...`);
-
-      const CONCURRENCY = 5;
-
-      for (let i = 0; i < audioEntries.length; i += CONCURRENCY) {
-        const batch = audioEntries.slice(i, i + CONCURRENCY);
+        console.log(`[DiscoveryEngine] Scanning folder: ${currentFolder} on ${providerId}`);
         
-        const batchResults = await Promise.all(
-          batch.map(async (entry) => {
-            const pathMeta = this.extractMetadataFromPath(entry.path, rootPath);
-            let artist = pathMeta.artist;
-            let album = pathMeta.album;
-            let title = this.cleanTitle(entry.name);
-            let duration = '0:00';
-            let durationSeconds = 0;
-            const coverUrl = DEFAULT_COVERS[coverIndex++ % DEFAULT_COVERS.length];
-            let coverBlob: Blob | undefined;
+        let result = await storage.listFolder(providerId, currentFolder);
+        const allEntries = [...result.entries];
 
-            try {
-              const chunk = await storage.downloadChunk(providerId, entry.path, 0, METADATA_CHUNK_SIZE);
-              const arrayBuffer = await chunk.arrayBuffer();
-              
-              const workerResult = await this.parseWithWorker(
-                this.generateId(providerId, entry.path),
-                arrayBuffer,
-                entry.name
-              );
+        while (result.hasMore) {
+          result = await storage.listFolder(providerId, currentFolder, result.cursor);
+          allEntries.push(...result.entries);
+        }
 
-              if (!workerResult.error) {
-                if (workerResult.title) title = workerResult.title;
-                if (workerResult.artist) artist = workerResult.artist;
-                if (workerResult.album) album = workerResult.album;
-                if (workerResult.durationSeconds) durationSeconds = workerResult.durationSeconds;
-                if (workerResult.duration) duration = workerResult.duration;
-                if (workerResult.coverBlob) coverBlob = workerResult.coverBlob;
-              }
-            } catch (metaErr) {
-               console.error(`[DiscoveryEngine] Metadata extraction failed for ${entry.name}:`, metaErr);
+        // For Google Drive, add subfolders to the queue
+        if (providerId === 'google-drive') {
+          allEntries
+            .filter(entry => entry.isFolder)
+            .forEach(folder => foldersToScan.push(folder.path));
+        }
+
+        const audioEntries = allEntries.filter((entry) => {
+          if (entry.isFolder) return false;
+          return AUDIO_EXTENSIONS.has(this.getExtension(entry.name));
+        });
+
+        if (audioEntries.length > 0) {
+          console.log(`[DiscoveryEngine] Found ${audioEntries.length} audio files in ${currentFolder}. Extracting metadata...`);
+
+          const CONCURRENCY = 5;
+
+          for (let i = 0; i < audioEntries.length; i += CONCURRENCY) {
+            const batch = audioEntries.slice(i, i + CONCURRENCY);
+            
+            const batchResults = await Promise.all(
+              batch.map(async (entry) => {
+                const pathMeta = this.extractMetadataFromPath(entry.path, rootPath);
+                let artist = pathMeta.artist;
+                let album = pathMeta.album;
+                let title = this.cleanTitle(entry.name);
+                let duration = '0:00';
+                let durationSeconds = 0;
+                let coverBlob: Blob | undefined;
+
+                try {
+                  const chunk = await storage.downloadChunk(providerId, entry.path, 0, METADATA_CHUNK_SIZE);
+                  const arrayBuffer = await chunk.arrayBuffer();
+                  
+                  const workerResult = await this.parseWithWorker(
+                    this.generateId(providerId, entry.path),
+                    arrayBuffer,
+                    entry.name
+                  );
+
+                  if (!workerResult.error) {
+                    if (workerResult.title) title = workerResult.title;
+                    if (workerResult.artist) artist = workerResult.artist;
+                    if (workerResult.album) album = workerResult.album;
+                    if (workerResult.durationSeconds) durationSeconds = workerResult.durationSeconds;
+                    if (workerResult.duration) duration = workerResult.duration;
+                    if (workerResult.coverBlob) coverBlob = workerResult.coverBlob;
+                  }
+                } catch (metaErr) {
+                   console.error(`[DiscoveryEngine] Metadata extraction failed for ${entry.name}:`, metaErr);
+                }
+
+                return {
+                  id: this.generateId(providerId, entry.path),
+                  title,
+                  artist,
+                  album,
+                  providerId,
+                  providerPath: entry.path,
+                  duration,
+                  durationSeconds,
+                  coverUrl: undefined, // Removed default covers
+                  coverBlob,
+                  addedDate: new Date().toLocaleDateString(),
+                  fileSize: entry.size || 0,
+                };
+              })
+            );
+
+            tracks.push(...batchResults);
+            onProgress?.(tracks.length, true);
+            
+            if (i + CONCURRENCY < audioEntries.length) {
+              await new Promise(r => setTimeout(r, 100));
             }
-
-            return {
-              id: this.generateId(providerId, entry.path),
-              title,
-              artist,
-              album,
-              providerId,
-              providerPath: entry.path,
-              duration,
-              durationSeconds,
-              coverUrl,
-              coverBlob,
-              addedDate: new Date().toLocaleDateString(),
-              fileSize: entry.size || 0,
-            };
-          })
-        );
-
-        tracks.push(...batchResults);
-        onProgress?.(tracks.length, true);
-        
-        if (i + CONCURRENCY < audioEntries.length) {
-          await new Promise(r => setTimeout(r, 200));
+          }
         }
       }
 
       if (tracks.length > 0) {
-        // Keep existing tracks from other providers? 
-        // For now, let's append to existing library instead of clearing everything.
-        // Actually, the previous behavior was clearing everything.
-        // To support multiple providers, we should probably only clear tracks for the CURRENT provider.
-        // But IndexedDB schema would need a way to delete by providerId.
-        // For now, let's just upsert (it will update existing ones by ID).
         await upsertTracks(tracks);
       }
 

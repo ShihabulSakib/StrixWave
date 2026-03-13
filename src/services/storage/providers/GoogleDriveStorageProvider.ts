@@ -54,8 +54,11 @@ export class GoogleDriveStorageProvider implements StorageProvider {
     if (!auth) throw new Error('Google Drive auth provider not found');
     const token = await auth.getAccessToken();
 
+    // Use 'root' if folderId is empty or falsy
+    const effectiveFolderId = folderId || 'root';
+
     // Query for files in folder, including audio files and folders
-    const q = `'${folderId}' in parents and trashed = false and (mimeType contains 'audio/' or mimeType = 'application/vnd.google-apps.folder')`;
+    const q = `'${effectiveFolderId}' in parents and trashed = false and (mimeType contains 'audio/' or mimeType = 'application/vnd.google-apps.folder')`;
     const params = new URLSearchParams({
       q,
       fields: 'nextPageToken, files(id, name, mimeType, size)',

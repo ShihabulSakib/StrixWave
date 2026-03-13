@@ -12,6 +12,8 @@ import PlaylistView from './components/PlaylistView';
 import YourLibrary from './components/YourLibrary';
 import Queue from './components/Queue';
 import { useNavigationHistory } from './hooks/useHistoryHook';
+import AuthManager from './services/auth/AuthManager';
+import { useNotification, NotificationProvider } from './components/NotificationProvider';
 
 const AppContent = memo(() => {
   const [activeTab, setActiveTab] = useState('home');
@@ -20,6 +22,7 @@ const AppContent = memo(() => {
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
 
   const { allPlaylists } = usePlaylists();
+  const { success, error } = useNotification();
 
   useNavigationHistory(
     activeTab,
@@ -29,6 +32,28 @@ const AppContent = memo(() => {
       setSelectedPlaylistId(playlistId);
     }
   );
+
+  // Handle OAuth Callbacks (Google Drive / Dropbox)
+  useEffect(() => {
+    const handleAuthCallback = async () => {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('code')) {
+        try {
+          const handled = await AuthManager.getInstance().handleCallback();
+          if (handled) {
+            success('Cloud storage connected successfully!');
+            // Clean up URL parameters
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        } catch (err) {
+          console.error('Auth callback error:', err);
+          error('Failed to connect cloud storage.');
+        }
+      }
+    };
+
+    handleAuthCallback();
+  }, [success, error]);
 
   useEffect(() => {
     // If we're viewing a playlist and it was deleted, go back to library
@@ -137,8 +162,6 @@ const AppContent = memo(() => {
 });
 
 AppContent.displayName = 'AppContent';
-
-import { NotificationProvider } from './components/NotificationProvider';
 
 function App() {
   return (

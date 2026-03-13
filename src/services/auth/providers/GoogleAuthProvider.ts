@@ -1,13 +1,14 @@
 import { AuthProvider } from '../types';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
-const REDIRECT_URI = window.location.origin;
+const GOOGLE_CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET as string;
+const REDIRECT_URI = window.location.origin.replace(/\/$/, '');
 
 // LocalStorage keys
 const LS_ACCESS_TOKEN = 'strixwave_goog_access_token';
 const LS_REFRESH_TOKEN = 'strixwave_goog_refresh_token';
 const LS_TOKEN_EXPIRY = 'strixwave_goog_token_expiry';
-const LS_CODE_VERIFIER = 'strixwave_goog_code_verifier';
+const LS_CODE_VERIFIER = 'strixwave_goog_code_verifier_v3'; // Incremented version to ensure fresh start
 
 // PKCE Helpers
 function generateRandomString(length: number): string {
@@ -51,6 +52,11 @@ export class GoogleAuthProvider implements AuthProvider {
   }
 
   async login(): Promise<void> {
+    if (!GOOGLE_CLIENT_ID) {
+      alert('Google Client ID is missing. Please check your .env file.');
+      return;
+    }
+
     const codeVerifier = generateRandomString(64);
     localStorage.setItem(LS_CODE_VERIFIER, codeVerifier);
 
@@ -61,14 +67,15 @@ export class GoogleAuthProvider implements AuthProvider {
       client_id: GOOGLE_CLIENT_ID,
       redirect_uri: REDIRECT_URI,
       response_type: 'code',
-      scope: 'https://www.googleapis.com/auth/drive.readonly',
+      scope: 'openid email profile https://www.googleapis.com/auth/drive.readonly',
       code_challenge: codeChallenge,
       code_challenge_method: 'S256',
-      access_type: 'offline', // important for refresh token
+      access_type: 'offline',
       prompt: 'consent',
       state: 'google-drive',
     });
 
+    console.log('[GoogleAuth] Starting login with redirect_uri:', REDIRECT_URI);
     window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
   }
 
@@ -77,42 +84,67 @@ export class GoogleAuthProvider implements AuthProvider {
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state');
 
-    if (!code || state !== 'google-drive' || this.isExchanging) return false;
+    if (!code || state !== 'google-drive') {
+      return false;
+    }
+
+    // Avoid double exchange in React StrictMode
+    if (this.accessToken && Date.now() < this.tokenExpiry) {
+      console.log('[GoogleAuth] Already have a valid token, skipping exchange.');
+      return true;
+    }
+
+    if (this.isExchanging) {
+      console.log('[GoogleAuth] Token exchange already in progress...');
+      return false;
+    }
+
+    console.log('[GoogleAuth] Callback detected. Starting token exchange...');
     this.isExchanging = true;
 
     const codeVerifier = localStorage.getItem(LS_CODE_VERIFIER);
     if (!codeVerifier) {
+      console.error('[GoogleAuth] CRITICAL: Code verifier missing in localStorage.');
       this.isExchanging = false;
       return false;
     }
 
     try {
+      const params: Record<string, string> = {
+        code,
+        grant_type: 'authorization_code',
+        client_id: GOOGLE_CLIENT_ID,
+        redirect_uri: REDIRECT_URI,
+        code_verifier: codeVerifier,
+      };
+
+      // Satisfy Google's requirement for client_secret if present
+      if (GOOGLE_CLIENT_SECRET) {
+        params.client_secret = GOOGLE_CLIENT_SECRET;
+      }
+
       const response = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          code,
-          grant_type: 'authorization_code',
-          client_id: GOOGLE_CLIENT_ID,
-          redirect_uri: REDIRECT_URI,
-          code_verifier: codeVerifier,
-        }),
+        body: new URLSearchParams(params),
       });
 
+      const responseText = await response.text();
       if (!response.ok) {
-        throw new Error(`Google token exchange failed: ${await response.text()}`);
+        throw new Error(`Google token exchange failed: ${responseText}`);
       }
 
-      const data = await response.json();
+      const data = JSON.parse(responseText);
       this.persistTokens(data.access_token, data.refresh_token, data.expires_in);
 
+      console.log('[GoogleAuth] Token exchange successful!');
       localStorage.removeItem(LS_CODE_VERIFIER);
       this.isExchanging = false;
       return true;
     } catch (err) {
       console.error('[GoogleAuth] handleCallback error:', err);
       this.isExchanging = false;
-      return false;
+      throw err;
     }
   }
 
@@ -148,14 +180,20 @@ export class GoogleAuthProvider implements AuthProvider {
   }
 
   private async refreshAccessToken(): Promise<void> {
+    const params: Record<string, string> = {
+      grant_type: 'refresh_token',
+      refresh_token: this.refreshToken!,
+      client_id: GOOGLE_CLIENT_ID,
+    };
+
+    if (GOOGLE_CLIENT_SECRET) {
+      params.client_secret = GOOGLE_CLIENT_SECRET;
+    }
+
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: this.refreshToken!,
-        client_id: GOOGLE_CLIENT_ID,
-      }),
+      body: new URLSearchParams(params),
     });
 
     if (!response.ok) {
